@@ -1,0 +1,1108 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Смета — материалы и расчёт стоимости</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#F2F3EE;
+    --paper-line:#DADDD3;
+    --ink:#1B211D;
+    --ink-soft:#5B655C;
+    --line:#C7CCC0;
+    --rebar:#C24A1E;
+    --rebar-dark:#9C3A16;
+    --blue:#2C4C6B;
+    --blue-soft:#DCE4EA;
+    --green:#3E7A52;
+    --green-soft:#DFEBE2;
+    --red:#B23A2E;
+    --card:#FBFBF8;
+    --shadow:0 1px 0 rgba(27,33,29,0.06);
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    margin:0;
+    background:
+      linear-gradient(var(--paper-line) 1px, transparent 1px) 0 0/100% 28px,
+      var(--paper);
+    color:var(--ink);
+    font-family:'Manrope',sans-serif;
+    font-size:14.5px;
+    line-height:1.45;
+  }
+  .mono{font-family:'IBM Plex Mono',monospace;}
+  button{font-family:inherit;cursor:pointer;}
+  input,select{font-family:inherit;font-size:inherit;}
+
+  /* ===== Shell ===== */
+  .shell{display:flex;min-height:100%;}
+  .rail{
+    width:210px;flex:none;
+    background:var(--ink);
+    color:#EDEEE8;
+    display:flex;flex-direction:column;
+    padding:22px 0 16px;
+  }
+  .rail-brand{
+    padding:0 20px 18px;
+    border-bottom:1px solid rgba(255,255,255,0.12);
+    margin-bottom:14px;
+  }
+  .rail-brand .mark{
+    font-family:'IBM Plex Mono',monospace;
+    font-size:12px;letter-spacing:.04em;color:var(--rebar);
+  }
+  .rail-brand h1{
+    margin:4px 0 2px;font-size:19px;font-weight:800;letter-spacing:-.01em;
+  }
+  .rail-brand p{margin:0;font-size:12px;color:#B7BDB2;}
+  .rail nav{display:flex;flex-direction:column;gap:2px;padding:0 10px;}
+  .rail button.tab{
+    display:flex;align-items:center;gap:10px;
+    text-align:left;background:transparent;border:none;color:#D8DBD2;
+    padding:10px 10px;border-radius:6px;font-size:14px;font-weight:600;
+  }
+  .rail button.tab .n{
+    font-family:'IBM Plex Mono',monospace;font-size:11px;color:#7D8579;
+    width:16px;
+  }
+  .rail button.tab:hover{background:rgba(255,255,255,0.06);}
+  .rail button.tab.active{background:var(--rebar);color:#fff;}
+  .rail button.tab.active .n{color:rgba(255,255,255,0.75);}
+  .rail-foot{margin-top:auto;padding:14px 20px 0;display:flex;flex-direction:column;gap:8px;}
+  .rail-foot button{
+    background:transparent;border:1px solid rgba(255,255,255,0.22);color:#D8DBD2;
+    font-size:12px;padding:7px 10px;border-radius:6px;text-align:left;
+  }
+  .rail-foot button:hover{border-color:rgba(255,255,255,0.5);}
+
+  .main{flex:1;min-width:0;padding:28px 34px 60px;}
+  .topline{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:22px;gap:16px;flex-wrap:wrap;}
+  .topline h2{margin:0;font-size:22px;font-weight:800;letter-spacing:-.01em;}
+  .topline .hint{color:var(--ink-soft);font-size:13px;}
+
+  .sheet{
+    background:var(--card);
+    border:1px solid var(--line);
+    box-shadow:var(--shadow);
+  }
+  .sheet + .sheet{margin-top:18px;}
+  .sheet-head{
+    display:flex;align-items:center;justify-content:space-between;gap:12px;
+    padding:12px 16px;border-bottom:1px solid var(--line);
+  }
+  .sheet-head h3{margin:0;font-size:14.5px;font-weight:700;}
+
+  table{width:100%;border-collapse:collapse;}
+  thead th{
+    text-align:left;font-size:11.5px;font-weight:600;color:var(--ink-soft);
+    padding:9px 12px;border-bottom:1px solid var(--line);white-space:nowrap;
+  }
+  tbody td{padding:8px 12px;border-bottom:1px solid #ECEEE7;font-size:13.5px;vertical-align:middle;}
+  tbody tr:last-child td{border-bottom:none;}
+  tbody tr:hover{background:#F6F6F1;}
+  td.num, th.num{text-align:right;font-family:'IBM Plex Mono',monospace;}
+  td.idx{font-family:'IBM Plex Mono',monospace;color:var(--ink-soft);font-size:12px;width:28px;}
+
+  input.cell, select.cell{
+    width:100%;border:1px solid transparent;background:transparent;
+    padding:4px 6px;border-radius:4px;color:var(--ink);
+  }
+  input.cell:hover, select.cell:hover{border-color:var(--line);}
+  input.cell:focus, select.cell:focus{outline:none;border-color:var(--blue);background:#fff;}
+  input.cell.num{text-align:right;font-family:'IBM Plex Mono',monospace;}
+
+  .btn{
+    border:1px solid var(--line);background:#fff;color:var(--ink);
+    padding:7px 12px;border-radius:6px;font-size:13px;font-weight:600;
+  }
+  .btn:hover{border-color:var(--ink-soft);}
+  .btn.primary{background:var(--rebar);border-color:var(--rebar);color:#fff;}
+  .btn.primary:hover{background:var(--rebar-dark);border-color:var(--rebar-dark);}
+  .btn.ghost{background:transparent;border-color:transparent;color:var(--ink-soft);}
+  .btn.ghost:hover{color:var(--ink);}
+  .btn.small{padding:4px 9px;font-size:12px;border-radius:5px;}
+  .btn.danger{color:var(--red);}
+  .btn:disabled{opacity:.4;cursor:not-allowed;}
+
+  .addrow{display:flex;gap:8px;padding:12px 16px;flex-wrap:wrap;align-items:flex-end;border-top:1px dashed var(--line);}
+  .field{display:flex;flex-direction:column;gap:4px;}
+  .field label{font-size:11px;color:var(--ink-soft);font-weight:600;}
+  .field input, .field select{
+    border:1px solid var(--line);border-radius:5px;padding:6px 8px;min-width:110px;background:#fff;
+  }
+  .field input.narrow{min-width:70px;}
+  .field input:focus, .field select:focus{outline:none;border-color:var(--blue);}
+
+  .empty{padding:34px 16px;text-align:center;color:var(--ink-soft);font-size:13.5px;}
+  .empty b{color:var(--ink);}
+
+  .composite-card{border:1px solid var(--line);background:var(--card);margin-bottom:16px;box-shadow:var(--shadow);}
+  .composite-card .ch{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;gap:12px;flex-wrap:wrap;border-bottom:1px solid var(--line);background:var(--blue-soft);}
+  .composite-card .ch .name-block input{font-size:15px;font-weight:700;border:none;background:transparent;padding:2px 4px;border-radius:4px;color:var(--ink);}
+  .composite-card .ch .name-block input:hover{background:rgba(255,255,255,0.5);}
+  .composite-card .ch .name-block input:focus{outline:none;background:#fff;}
+  .composite-card .ch .unit-row{font-size:11.5px;color:var(--blue);margin-top:2px;}
+  .composite-card .totals{display:flex;gap:16px;font-size:12.5px;align-items:center;}
+  .composite-card .totals .t{display:flex;flex-direction:column;align-items:flex-end;}
+  .composite-card .totals .t span{color:var(--ink-soft);font-size:10.5px;}
+  .composite-card .totals .t b{font-family:'IBM Plex Mono',monospace;font-size:14px;}
+  .cyclic-warn{color:var(--red);font-size:11.5px;font-weight:700;}
+
+  .pill{display:inline-block;font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:20px;}
+  .pill.mat{background:var(--paper-line);color:var(--ink-soft);}
+  .pill.comp{background:var(--blue-soft);color:var(--blue);}
+  .pill.work{background:#F1E6D8;color:#8A5A1C;}
+  .pill.consumable{background:#E3E7DC;color:#4F6B4A;}
+
+  .expand-toggle{background:transparent;border:none;color:var(--blue);font-size:12px;font-weight:600;padding:0;cursor:pointer;}
+  .expand-toggle:hover{text-decoration:underline;}
+
+  .totalsbar{display:flex;gap:24px;padding:14px 16px;background:#fff;border-top:1px solid var(--line);flex-wrap:wrap;}
+  .totalsbar .t{display:flex;flex-direction:column;gap:2px;}
+  .totalsbar .t span{font-size:11px;color:var(--ink-soft);font-weight:600;}
+  .totalsbar .t b{font-family:'IBM Plex Mono',monospace;font-size:18px;}
+  .totalsbar .t.grand b{color:var(--rebar);}
+
+  .draft-name{display:flex;gap:10px;align-items:center;padding:14px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap;}
+  .draft-name input{flex:1;min-width:220px;border:1px solid var(--line);border-radius:6px;padding:8px 10px;font-size:15px;font-weight:700;background:#fff;}
+  .draft-name input:focus{outline:none;border-color:var(--blue);}
+
+  .saved-card{border:1px solid var(--line);background:var(--card);padding:14px 16px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;box-shadow:var(--shadow);}
+  .saved-card .info h4{margin:0 0 4px;font-size:15px;font-weight:700;}
+  .saved-card .info p{margin:0;font-size:12px;color:var(--ink-soft);}
+  .saved-card .sum{text-align:right;}
+  .saved-card .sum b{font-family:'IBM Plex Mono',monospace;font-size:17px;color:var(--rebar);}
+  .saved-card .sum div{font-size:11px;color:var(--ink-soft);}
+  .saved-actions{display:flex;gap:6px;}
+
+  .breakdown{background:#F6F6F1;padding:10px 16px;}
+  .breakdown table{background:#fff;border:1px solid var(--line);}
+
+  .type-toggle{display:flex;border:1px solid var(--line);border-radius:6px;overflow:hidden;}
+  .type-toggle button{border:none;background:#fff;padding:7px 12px;font-size:12.5px;font-weight:600;color:var(--ink-soft);}
+  .type-toggle button.active{background:var(--ink);color:#fff;}
+
+  select.cell option{color:var(--ink);}
+
+  @media (max-width: 860px){
+    .shell{flex-direction:column;}
+    .rail{width:100%;flex-direction:row;align-items:center;padding:12px 14px;gap:14px;}
+    .rail-brand{border:none;margin:0;padding:0;}
+    .rail nav{flex-direction:row;overflow-x:auto;padding:0;}
+    .rail-foot{margin:0 0 0 auto;flex-direction:row;padding:0;}
+    .main{padding:20px 16px 60px;}
+    .addrow{flex-direction:column;align-items:stretch;}
+    .field input,.field select{min-width:0;width:100%;}
+  }
+  :focus-visible{outline:2px solid var(--blue);outline-offset:1px;}
+</style>
+</head>
+<body>
+<div class="shell">
+  <div class="rail">
+    <div class="rail-brand">
+      <div class="mark">01 / СМЕТНЫЙ РАСЧЁТ</div>
+      <h1>Смета</h1>
+      <p>материалы · работы · сметы</p>
+    </div>
+    <nav id="nav"></nav>
+    <div class="rail-foot">
+      <button id="btnExport">Скачать JSON</button>
+      <button id="btnImport">Загрузить JSON</button>
+      <input type="file" id="fileImport" accept="application/json" style="display:none">
+    </div>
+  </div>
+  <div class="main" id="main"></div>
+</div>
+
+<script>
+/* ======================= STATE ======================= */
+let state = {
+  materials: [],
+  works: [],
+  composites: [],
+  estimates: [],
+  draft: { id:null, name:'', rows:[] }
+};
+let currentTab = 'materials';
+const STORAGE_KEY = 'stroysmeta:data';
+
+const uid = () => Math.random().toString(36).slice(2,10) + Date.now().toString(36).slice(-4);
+
+/* ======================= PERSISTENCE ======================= */
+let saveTimer = null;
+function scheduleSave(){
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveState, 400);
+}
+async function saveState(){
+  try{
+    await window.storage.set(STORAGE_KEY, JSON.stringify(state), false);
+  }catch(e){ console.error('Ошибка сохранения', e); }
+}
+async function loadState(){
+  try{
+    const res = await window.storage.get(STORAGE_KEY, false);
+    if(res && res.value){
+      const parsed = JSON.parse(res.value);
+      state = Object.assign({materials:[],works:[],composites:[],estimates:[],draft:{id:null,name:'',rows:[]}}, parsed);
+      state.works = state.works || [];
+    }
+  }catch(e){ /* нет сохранённых данных — начинаем с пустого */ }
+  render();
+}
+
+/* ======================= DATA HELPERS ======================= */
+function getMaterial(id){ return state.materials.find(m=>m.id===id); }
+function getWork(id){ return state.works.find(w=>w.id===id); }
+function getComposite(id){ return state.composites.find(c=>c.id===id); }
+function getItem(type,id){
+  if(type==='material') return getMaterial(id);
+  if(type==='work') return getWork(id);
+  return getComposite(id);
+}
+function itemUnit(type,item){
+  if(!item) return '';
+  return type==='composite' ? item.outputUnit : item.unit;
+}
+const TYPE_LABEL = {material:'материал', consumable:'расходник', work:'работа', composite:'композит'};
+// класс и подпись «пилюли» для компонента/позиции с учётом категории материала
+function pillInfo(refType, item){
+  if(refType==='material' && item && item.category==='consumable') return {cls:'consumable', label:'расходник'};
+  if(refType==='material') return {cls:'mat', label:'материал'};
+  if(refType==='work') return {cls:'work', label:'работа'};
+  return {cls:'comp', label:'композит'};
+}
+
+function unitPrice(material){
+  const q = Number(material.packageQty);
+  const p = Number(material.price);
+  if(!q || q<=0) return 0;
+  return p/q;
+}
+function emptyCost(cyclic){ return {mat:0, consumable:0, labor:0, cyclic:!!cyclic}; }
+
+// рекурсивная стоимость на 1 ед. результата: {mat, consumable, labor, cyclic}
+function computeCost(type, id, visiting){
+  visiting = visiting || new Set();
+  if(type==='material'){
+    const m = getMaterial(id);
+    if(!m) return emptyCost();
+    const up = unitPrice(m);
+    return m.category==='consumable' ? {mat:0, consumable:up, labor:0, cyclic:false} : {mat:up, consumable:0, labor:0, cyclic:false};
+  }
+  if(type==='work'){
+    const w = getWork(id);
+    if(!w) return emptyCost();
+    const key = 'w:'+id;
+    if(visiting.has(key)) return emptyCost(true);
+    const nextVisiting = new Set(visiting); nextVisiting.add(key);
+    let mat=0, consumable=0, labor=Number(w.price)||0, cyclic=false;
+    for(const comp of (w.components||[])){
+      const sub = computeCost(comp.refType, comp.refId, nextVisiting);
+      if(sub.cyclic) cyclic = true;
+      mat += (Number(comp.rate)||0)*sub.mat;
+      consumable += (Number(comp.rate)||0)*sub.consumable;
+      labor += (Number(comp.rate)||0)*sub.labor;
+    }
+    return {mat, consumable, labor, cyclic};
+  }
+  const c = getComposite(id);
+  if(!c) return emptyCost();
+  const key = 'c:'+id;
+  if(visiting.has(key)) return emptyCost(true);
+  const nextVisiting = new Set(visiting); nextVisiting.add(key);
+  // laborPrice — необязательная "прочая" работа сверх компонентов состава
+  let mat=0, consumable=0, labor=Number(c.laborPrice)||0, cyclic=false;
+  for(const comp of (c.components||[])){
+    const sub = computeCost(comp.refType, comp.refId, nextVisiting);
+    if(sub.cyclic) cyclic = true;
+    mat += (Number(comp.rate)||0)*sub.mat;
+    consumable += (Number(comp.rate)||0)*sub.consumable;
+    labor += (Number(comp.rate)||0)*sub.labor;
+  }
+  return {mat, consumable, labor, cyclic};
+}
+
+// разложить позицию на материалы, расходники и работы (агрегировано) для qty единиц
+function decompose(type, id, qty, acc, visiting){
+  acc = acc || {materials:new Map(), consumables:new Map(), works:new Map()};
+  visiting = visiting || new Set();
+  if(type==='material'){
+    const m = getMaterial(id);
+    if(!m) return acc;
+    const map = m.category==='consumable' ? acc.consumables : acc.materials;
+    const entry = map.get(id) || {id:m.id, name:m.name, unit:m.unit, qty:0, unitPrice:unitPrice(m)};
+    entry.qty += qty;
+    map.set(id, entry);
+    return acc;
+  }
+  if(type==='work'){
+    const w = getWork(id);
+    if(!w) return acc;
+    const entry = acc.works.get(id) || {id:w.id, name:w.name, unit:w.unit, qty:0, unitPrice:Number(w.price)||0};
+    entry.qty += qty;
+    acc.works.set(id, entry);
+    const key = 'w:'+id;
+    if(visiting.has(key)) return acc;
+    const nextVisiting = new Set(visiting); nextVisiting.add(key);
+    for(const comp of (w.components||[])){
+      decompose(comp.refType, comp.refId, (Number(comp.rate)||0)*qty, acc, nextVisiting);
+    }
+    return acc;
+  }
+  const c = getComposite(id);
+  if(!c) return acc;
+  const key = 'c:'+id;
+  if(visiting.has(key)) return acc;
+  const nextVisiting = new Set(visiting); nextVisiting.add(key);
+  if(Number(c.laborPrice)){
+    const key2 = 'extra:'+id;
+    const entry = acc.works.get(key2) || {id:key2, name:`Прочие работы — «${c.name}»`, unit:c.outputUnit, qty:0, unitPrice:Number(c.laborPrice)||0};
+    entry.qty += qty;
+    acc.works.set(key2, entry);
+  }
+  for(const comp of (c.components||[])){
+    decompose(comp.refType, comp.refId, (Number(comp.rate)||0)*qty, acc, nextVisiting);
+  }
+  return acc;
+}
+
+function fmt(n){
+  if(!isFinite(n)) return '—';
+  return n.toLocaleString('ru-RU', {minimumFractionDigits:2, maximumFractionDigits:2});
+}
+function esc(s){
+  const d = document.createElement('div'); d.textContent = s==null?'':String(s); return d.innerHTML;
+}
+
+/* ======================= NAV / RENDER ROOT ======================= */
+const TABS = [
+  {id:'materials', label:'Материалы'},
+  {id:'works', label:'Виды работ'},
+  {id:'composites', label:'Композиты'},
+  {id:'estimate', label:'Смета'},
+  {id:'saved', label:'Сохранённые сметы'},
+];
+
+function renderNav(){
+  const nav = document.getElementById('nav');
+  nav.innerHTML = TABS.map((t,i)=>`
+    <button class="tab ${currentTab===t.id?'active':''}" data-tab="${t.id}">
+      <span class="n">${String(i+1).padStart(2,'0')}</span>${esc(t.label)}
+    </button>`).join('');
+  nav.querySelectorAll('button.tab').forEach(b=>{
+    b.addEventListener('click', ()=>{ currentTab = b.dataset.tab; render(); });
+  });
+}
+
+function render(){
+  renderNav();
+  const main = document.getElementById('main');
+  if(currentTab==='materials') main.innerHTML = viewMaterials();
+  else if(currentTab==='works') main.innerHTML = viewWorks();
+  else if(currentTab==='composites') main.innerHTML = viewComposites();
+  else if(currentTab==='estimate') main.innerHTML = viewEstimate();
+  else if(currentTab==='saved') main.innerHTML = viewSaved();
+  attachHandlers();
+}
+
+/* ======================= MATERIALS TAB ======================= */
+function viewMaterials(){
+  const rows = state.materials.map((m,i)=>`
+    <tr data-id="${m.id}">
+      <td class="idx">${i+1}</td>
+      <td><input class="cell" data-act="mat-field" data-field="name" value="${esc(m.name)}" placeholder="Название"></td>
+      <td>
+        <select class="cell" data-act="mat-field" data-field="category">
+          <option value="material" ${m.category!=='consumable'?'selected':''}>материал</option>
+          <option value="consumable" ${m.category==='consumable'?'selected':''}>расходник</option>
+        </select>
+      </td>
+      <td><input class="cell" style="max-width:90px" data-act="mat-field" data-field="unit" value="${esc(m.unit)}" placeholder="кг"></td>
+      <td class="num"><input class="cell num" data-act="mat-field" data-field="price" type="number" step="0.01" value="${m.price}"></td>
+      <td class="num"><input class="cell num" data-act="mat-field" data-field="packageQty" type="number" step="0.01" value="${m.packageQty}"></td>
+      <td class="num mono">${fmt(unitPrice(m))} ₽</td>
+      <td><button class="btn small ghost danger" data-act="del-mat" data-id="${m.id}">Удалить</button></td>
+    </tr>
+  `).join('');
+
+  return `
+  <div class="topline">
+    <div><h2>Материалы</h2><div class="hint">Материалы и расходники: цена за упаковку и количество в упаковке дают цену за единицу. Тип «расходник» отделяет их в смете и составах отдельной суммой.</div></div>
+  </div>
+  <div class="sheet">
+    <div class="sheet-head"><h3>Список материалов</h3><span class="hint" style="font-size:12px;color:var(--ink-soft)">${state.materials.length} шт.</span></div>
+    ${state.materials.length? `
+    <table>
+      <thead><tr>
+        <th style="width:28px"></th><th>Название</th><th>Тип</th><th>Ед. изм.</th>
+        <th class="num">Цена за упак., ₽</th><th class="num">Кол-во в упак.</th>
+        <th class="num">Цена за ед., ₽</th><th></th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>` : `<div class="empty">Пока нет материалов. Добавьте первый ниже — например, «Цемент М500», ед. изм. «кг», цена за мешок и вес мешка. Одноразовые вещи вроде перчаток или дисков для болгарки добавляйте так же, но с типом «расходник».</div>`}
+    <div class="addrow">
+      <div class="field"><label>Название</label><input id="newMatName" placeholder="Цемент М500"></div>
+      <div class="field"><label>Тип</label>
+        <select id="newMatCategory">
+          <option value="material">материал</option>
+          <option value="consumable">расходник</option>
+        </select>
+      </div>
+      <div class="field"><label>Ед. изм.</label><input id="newMatUnit" class="narrow" placeholder="кг"></div>
+      <div class="field"><label>Цена за упак., ₽</label><input id="newMatPrice" class="narrow" type="number" step="0.01" placeholder="350"></div>
+      <div class="field"><label>Кол-во в упак.</label><input id="newMatQty" class="narrow" type="number" step="0.01" placeholder="50"></div>
+      <button class="btn primary" id="btnAddMat">Добавить материал</button>
+    </div>
+  </div>`;
+}
+
+/* ======================= WORKS TAB ======================= */
+function viewWorks(){
+  if(!state.works.length && !state.materials.length && !state.composites.length){
+    return `
+    <div class="topline"><div><h2>Виды работ</h2><div class="hint">Расценки на работу вместе с тем, что для неё требуется.</div></div></div>
+    <div class="sheet"><div class="empty">Сначала добавьте хотя бы один материал — из них строится состав работы.</div></div>`;
+  }
+
+  const cards = state.works.map(w=>{
+    const cost = computeCost('work', w.id);
+    const compRows = (w.components||[]).map((comp,i)=>{
+      const item = getItem(comp.refType, comp.refId);
+      const iname = item ? item.name : '(удалено)';
+      const iunit = itemUnit(comp.refType, item);
+      const pill = pillInfo(comp.refType, item);
+      const sub = item ? computeCost(comp.refType, comp.refId) : emptyCost();
+      const lineSum = (Number(comp.rate)||0) * (sub.mat+sub.consumable+sub.labor);
+      return `
+      <tr>
+        <td class="idx">${i+1}</td>
+        <td><span class="pill ${pill.cls}">${pill.label}</span> ${esc(iname)}</td>
+        <td class="num"><input class="cell num" style="max-width:90px" data-act="work-comp-rate" data-work="${w.id}" data-idx="${i}" type="number" step="0.0001" value="${comp.rate}"> <span class="hint" style="font-size:11px;color:var(--ink-soft)">${esc(iunit)}</span></td>
+        <td class="num mono">${fmt(sub.mat+sub.consumable+sub.labor)} ₽</td>
+        <td class="num mono">${fmt(lineSum)} ₽</td>
+        <td><button class="btn small ghost danger" data-act="del-work-line" data-work="${w.id}" data-idx="${i}">✕</button></td>
+      </tr>`;
+    }).join('');
+
+    return `
+    <div class="composite-card" data-id="${w.id}">
+      <div class="ch">
+        <div class="name-block">
+          <input data-act="work-field" data-work="${w.id}" data-field="name" value="${esc(w.name)}">
+          <div class="unit-row">расценка на 1 <input class="cell" style="display:inline;width:70px;padding:1px 4px" data-act="work-field" data-work="${w.id}" data-field="unit" value="${esc(w.unit)}"></div>
+        </div>
+        <div class="totals">
+          <div class="t"><span>материалы / ед.</span><b>${fmt(cost.mat)} ₽</b></div>
+          <div class="t"><span>расходники / ед.</span><b>${fmt(cost.consumable)} ₽</b></div>
+          <div class="t"><span>своя расценка / ед.</span><b class="mono"><input class="cell num" style="width:70px" data-act="work-field" data-work="${w.id}" data-field="price" type="number" step="0.01" value="${w.price||0}"></b></div>
+          <div class="t"><span>итого / ед.</span><b>${fmt(cost.mat+cost.consumable+cost.labor)} ₽</b></div>
+          ${cost.cyclic? '<span class="cyclic-warn">⚠ цикл в составе</span>':''}
+          <button class="btn small ghost danger" data-act="del-work" data-id="${w.id}">Удалить</button>
+        </div>
+      </div>
+      ${(w.components||[]).length? `
+      <table>
+        <thead><tr><th style="width:28px"></th><th>Компонент</th><th class="num">Расход на ед. работы</th><th class="num">Цена/ед.</th><th class="num">Сумма</th><th></th></tr></thead>
+        <tbody>${compRows}</tbody>
+      </table>` : `<div class="empty">Для этой работы пока не указаны материалы или расходники — при добавлении в смету посчитается только расценка.</div>`}
+      <div class="addrow">
+        <div class="field"><label>Материал, расходник или работа</label>
+          <select class="cell" id="newWorkComp_${w.id}" style="min-width:220px">${itemOptions({excludeWorkId:w.id})}</select>
+        </div>
+        <div class="field"><label>Расход на 1 ${esc(w.unit)}</label><input class="narrow" id="newWorkCompRate_${w.id}" type="number" step="0.0001" placeholder="1"></div>
+        <button class="btn small" data-act="add-work-line" data-work="${w.id}">Добавить в состав</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  return `
+  <div class="topline">
+    <div><h2>Виды работ</h2><div class="hint">Расценка за единицу плюс список материалов, расходников и других работ, которые она за собой тянет.</div></div>
+  </div>
+  ${cards || `<div class="sheet"><div class="empty">Видов работ пока нет. Создайте первый ниже — например, «Штукатурка стен», расценка за «м2».</div></div>`}
+  <div class="sheet">
+    <div class="addrow">
+      <div class="field"><label>Название работы</label><input id="newWorkName" placeholder="Штукатурка стен"></div>
+      <div class="field"><label>Ед. изм.</label><input id="newWorkUnit" class="narrow" placeholder="м2"></div>
+      <div class="field"><label>Расценка за ед., ₽</label><input id="newWorkPrice" class="narrow" type="number" step="0.01" placeholder="400"></div>
+      <button class="btn primary" id="btnAddWork">Создать работу</button>
+    </div>
+  </div>`;
+}
+
+/* ======================= COMPOSITES TAB ======================= */
+function itemOptions(opts){
+  opts = opts || {};
+  let html = '<option value="">— выбрать —</option>';
+  const mats = state.materials.filter(m=>m.category!=='consumable');
+  const cons = state.materials.filter(m=>m.category==='consumable');
+  if(mats.length){
+    html += `<optgroup label="Материалы">` + mats.map(m=>
+      `<option value="material:${m.id}">${esc(m.name)} (${esc(m.unit)})</option>`).join('') + `</optgroup>`;
+  }
+  if(cons.length){
+    html += `<optgroup label="Расходники">` + cons.map(m=>
+      `<option value="material:${m.id}">${esc(m.name)} (${esc(m.unit)})</option>`).join('') + `</optgroup>`;
+  }
+  const works = state.works.filter(w=>w.id!==opts.excludeWorkId);
+  if(works.length){
+    html += `<optgroup label="Виды работ">` + works.map(w=>
+      `<option value="work:${w.id}">${esc(w.name)} (${esc(w.unit)})</option>`).join('') + `</optgroup>`;
+  }
+  const comps = state.composites.filter(c=>c.id!==opts.excludeCompositeId);
+  if(comps.length){
+    html += `<optgroup label="Композиты">` + comps.map(c=>
+      `<option value="composite:${c.id}">${esc(c.name)} (за ${esc(c.outputUnit)})</option>`).join('') + `</optgroup>`;
+  }
+  return html;
+}
+
+function viewComposites(){
+  if(!state.composites.length && !state.materials.length){
+    return `
+    <div class="topline"><div><h2>Композиты</h2><div class="hint">Смеси и составы из материалов и других композитов.</div></div></div>
+    <div class="sheet"><div class="empty">Сначала добавьте хотя бы один материал на вкладке «Материалы» — из них строятся композиты.</div></div>`;
+  }
+
+  const cards = state.composites.map(c=>{
+    const cost = computeCost('composite', c.id);
+    const compRows = (c.components||[]).map((comp,i)=>{
+      const item = getItem(comp.refType, comp.refId);
+      const iname = item ? item.name : '(удалено)';
+      const iunit = itemUnit(comp.refType, item);
+      const pill = pillInfo(comp.refType, item);
+      const sub = item ? computeCost(comp.refType, comp.refId) : emptyCost();
+      const lineSum = (Number(comp.rate)||0) * (sub.mat+sub.consumable+sub.labor);
+      return `
+      <tr>
+        <td class="idx">${i+1}</td>
+        <td>
+          <span class="pill ${pill.cls}">${pill.label}</span>
+          ${esc(iname)}
+        </td>
+        <td class="num"><input class="cell num" style="max-width:90px" data-act="comp-rate" data-comp="${c.id}" data-idx="${i}" type="number" step="0.0001" value="${comp.rate}"> <span class="hint" style="font-size:11px;color:var(--ink-soft)">${esc(iunit)}</span></td>
+        <td class="num mono">${fmt(sub.mat+sub.consumable+sub.labor)} ₽</td>
+        <td class="num mono">${fmt(lineSum)} ₽</td>
+        <td><button class="btn small ghost danger" data-act="del-comp-line" data-comp="${c.id}" data-idx="${i}">✕</button></td>
+      </tr>`;
+    }).join('');
+
+    return `
+    <div class="composite-card" data-id="${c.id}">
+      <div class="ch">
+        <div class="name-block">
+          <input data-act="comp-field" data-comp="${c.id}" data-field="name" value="${esc(c.name)}">
+          <div class="unit-row">результат на 1 <input class="cell" style="display:inline;width:70px;padding:1px 4px" data-act="comp-field" data-comp="${c.id}" data-field="outputUnit" value="${esc(c.outputUnit)}"></div>
+        </div>
+        <div class="totals">
+          <div class="t"><span>материалы / ед.</span><b>${fmt(cost.mat)} ₽</b></div>
+          <div class="t"><span>расходники / ед.</span><b>${fmt(cost.consumable)} ₽</b></div>
+          <div class="t"><span>работа (состав) / ед.</span><b>${fmt(cost.labor-(Number(c.laborPrice)||0))} ₽</b></div>
+          <div class="t"><span>+ прочая работа / ед.</span><b class="mono"><input class="cell num" style="width:70px" data-act="comp-field" data-comp="${c.id}" data-field="laborPrice" type="number" step="0.01" value="${c.laborPrice||0}"></b></div>
+          <div class="t"><span>итого / ед.</span><b>${fmt(cost.mat+cost.consumable+cost.labor)} ₽</b></div>
+          ${cost.cyclic? '<span class="cyclic-warn">⚠ цикл в составе</span>':''}
+          <button class="btn small ghost danger" data-act="del-comp" data-comp="${c.id}">Удалить</button>
+        </div>
+      </div>
+      ${(c.components||[]).length? `
+      <table>
+        <thead><tr><th style="width:28px"></th><th>Компонент</th><th class="num">Расход на ед. вывода</th><th class="num">Цена/ед.</th><th class="num">Сумма</th><th></th></tr></thead>
+        <tbody>${compRows}</tbody>
+      </table>` : `<div class="empty">В составе пока нет компонентов.</div>`}
+      <div class="addrow">
+        <div class="field"><label>Компонент</label>
+          <select class="cell" id="newComp_${c.id}" style="min-width:220px">${itemOptions({excludeCompositeId:c.id})}</select>
+        </div>
+        <div class="field"><label>Расход на 1 ${esc(c.outputUnit)}</label><input class="narrow" id="newCompRate_${c.id}" type="number" step="0.0001" placeholder="1"></div>
+        <button class="btn small" data-act="add-comp-line" data-comp="${c.id}">Добавить в состав</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  return `
+  <div class="topline">
+    <div><h2>Композиты</h2><div class="hint">Составы из материалов и других композитов, с расходом на единицу результата.</div></div>
+  </div>
+  ${cards || `<div class="sheet"><div class="empty">Композитов пока нет. Создайте первый ниже — например, «Штукатурка стен», результат за «м2».</div></div>`}
+  <div class="sheet">
+    <div class="addrow">
+      <div class="field"><label>Название композита</label><input id="newCompName" placeholder="Штукатурка стен"></div>
+      <div class="field"><label>Ед. изм. результата</label><input id="newCompUnit" class="narrow" placeholder="м2"></div>
+      <button class="btn primary" id="btnAddComp">Создать композит</button>
+    </div>
+  </div>`;
+}
+
+/* ======================= ESTIMATE (DRAFT) TAB ======================= */
+function rowCost(row){
+  if(row.kind==='catalog'){
+    const c = computeCost(row.refType, row.refId);
+    const qty = Number(row.qty)||0;
+    return {mat: qty*c.mat, consumable: qty*c.consumable, labor: qty*c.labor, cyclic:c.cyclic};
+  }
+  const qty = Number(row.qty)||0;
+  const price = Number(row.unitPrice)||0;
+  const bucket = row.category === 'consumable' ? 'consumable' : (row.category === 'labor' ? 'labor' : 'mat');
+  const out = {mat:0, consumable:0, labor:0, cyclic:false};
+  out[bucket] = qty*price;
+  return out;
+}
+
+const CUSTOM_CATEGORY_LABEL = {material:'материал', consumable:'расходник', labor:'работа'};
+
+function viewEstimate(){
+  const rows = state.draft.rows || [];
+  const expanded = state._expandedRows || new Set();
+  let sumMat=0, sumCons=0, sumLabor=0;
+  const rowsHtml = rows.map((r,i)=>{
+    const c = rowCost(r);
+    sumMat += c.mat; sumCons += c.consumable; sumLabor += c.labor;
+    let name, unit, unitPriceShown, pillClass, pillLabel;
+    const canExpand = r.kind==='catalog' && (r.refType==='composite' || r.refType==='work');
+    if(r.kind==='catalog'){
+      const item = getItem(r.refType, r.refId);
+      name = item ? item.name : '(удалено)';
+      unit = itemUnit(r.refType, item);
+      const uc = item ? computeCost(r.refType,r.refId) : emptyCost();
+      unitPriceShown = uc.mat+uc.consumable+uc.labor;
+      const pill = pillInfo(r.refType, item);
+      pillClass = pill.cls; pillLabel = pill.label;
+    } else {
+      name = r.name; unit = r.unit;
+      unitPriceShown = Number(r.unitPrice)||0;
+      pillClass = r.category==='consumable'?'consumable':(r.category==='labor'?'work':'mat');
+      pillLabel = 'своя: ' + (CUSTOM_CATEGORY_LABEL[r.category]||'материал');
+    }
+    const isOpen = expanded.has(i);
+    let breakdownHtml = '';
+    if(canExpand && isOpen){
+      const parts = decompose(r.refType, r.refId, Number(r.qty)||0);
+      const matLines = Array.from(parts.materials.values());
+      const consLines = Array.from(parts.consumables.values());
+      const workLines = Array.from(parts.works.values());
+      const lineRow = (l)=>`<tr><td>${esc(l.name)}</td><td>${esc(l.unit)}</td><td class="num mono">${fmt(l.qty)}</td><td class="num mono">${fmt(l.unitPrice)} ₽</td><td class="num mono">${fmt(l.qty*l.unitPrice)} ₽</td></tr>`;
+      const block = (title, lines) => lines.length ? `<table style="margin-bottom:8px">
+            <thead><tr><th>${title}</th><th>Ед.</th><th class="num">Кол-во</th><th class="num">Цена/ед.</th><th class="num">Сумма</th></tr></thead>
+            <tbody>${lines.map(lineRow).join('')}</tbody>
+          </table>` : '';
+      breakdownHtml = `
+      <tr><td></td><td colspan="9" style="padding:0">
+        <div class="breakdown">
+          ${block('Материал', matLines)}${block('Расходник', consLines)}${block('Работа', workLines)}
+          ${!matLines.length && !consLines.length && !workLines.length ? `<span class="hint">Состав пуст.</span>` : ''}
+        </div>
+      </td></tr>`;
+    }
+    return `
+    <tr data-idx="${i}">
+      <td class="idx">${i+1}</td>
+      <td>
+        <span class="pill ${pillClass}">${esc(pillLabel)}</span>
+        ${esc(name)}
+        ${c.cyclic?'<span class="cyclic-warn"> ⚠ цикл</span>':''}
+        ${canExpand? `<div><button class="expand-toggle" data-act="toggle-breakdown" data-idx="${i}">${isOpen?'▾ скрыть состав':'▸ показать состав'}</button></div>`:''}
+      </td>
+      <td>${esc(unit)}</td>
+      <td class="num"><input class="cell num" style="max-width:90px" data-act="row-qty" data-idx="${i}" type="number" step="0.0001" value="${r.qty}"></td>
+      <td class="num mono">${fmt(unitPriceShown)} ₽</td>
+      <td class="num mono">${fmt(c.mat)} ₽</td>
+      <td class="num mono">${fmt(c.consumable)} ₽</td>
+      <td class="num mono">${fmt(c.labor)} ₽</td>
+      <td class="num mono"><b>${fmt(c.mat+c.consumable+c.labor)} ₽</b></td>
+      <td><button class="btn small ghost danger" data-act="del-row" data-idx="${i}">✕</button></td>
+    </tr>${breakdownHtml}`;
+  }).join('');
+
+  return `
+  <div class="topline">
+    <div><h2>Смета</h2><div class="hint">Добавляйте виды работ — материалы и расходники под них считаются сами. Материалы, расходники и композиты можно добавлять и отдельно.</div></div>
+    <button class="btn ghost" id="btnNewDraft">Начать новую смету</button>
+  </div>
+  <div class="sheet">
+    <div class="draft-name">
+      <input id="draftName" placeholder="Название сметы, например «Отделка кв. 42, комн. 1»" value="${esc(state.draft.name||'')}">
+      <button class="btn primary" id="btnSaveDraft">Сохранить смету</button>
+    </div>
+    ${rows.length? `
+    <table>
+      <thead><tr>
+        <th style="width:28px"></th><th>Позиция</th><th>Ед.</th><th class="num">Кол-во</th>
+        <th class="num">Цена/ед.</th><th class="num">Материалы</th><th class="num">Расходники</th><th class="num">Работа</th><th class="num">Сумма</th><th></th>
+      </tr></thead>
+      <tbody>${rowsHtml}</tbody>
+    </table>
+    <div class="totalsbar">
+      <div class="t"><span>Материалы</span><b>${fmt(sumMat)} ₽</b></div>
+      <div class="t"><span>Расходники</span><b>${fmt(sumCons)} ₽</b></div>
+      <div class="t"><span>Работа</span><b>${fmt(sumLabor)} ₽</b></div>
+      <div class="t grand"><span>Итого</span><b>${fmt(sumMat+sumCons+sumLabor)} ₽</b></div>
+    </div>
+    ` : `<div class="empty">В смете пока нет позиций. Добавьте их ниже — по одной за раз.</div>`}
+  </div>
+
+  <div class="sheet">
+    <div class="sheet-head"><h3>Добавить позицию</h3>
+      <div class="type-toggle">
+        <button data-rowtype="catalog" class="${state._addKind!=='custom'?'active':''}">из списка</button>
+        <button data-rowtype="custom" class="${state._addKind==='custom'?'active':''}">своя позиция</button>
+      </div>
+    </div>
+    ${state._addKind==='custom' ? `
+    <div class="addrow">
+      <div class="field"><label>Название</label><input id="customName" placeholder="Доставка"></div>
+      <div class="field"><label>Тип</label>
+        <select id="customCategory">
+          <option value="material">материал</option>
+          <option value="consumable">расходник</option>
+          <option value="labor">работа</option>
+        </select>
+      </div>
+      <div class="field"><label>Ед. изм.</label><input id="customUnit" class="narrow" placeholder="усл."></div>
+      <div class="field"><label>Кол-во</label><input id="customQty" class="narrow" type="number" step="0.0001" placeholder="1"></div>
+      <div class="field"><label>Цена/ед., ₽</label><input id="customPrice" class="narrow" type="number" step="0.01" placeholder="0"></div>
+      <button class="btn primary" id="btnAddCustomRow">Добавить</button>
+    </div>` : `
+    <div class="addrow">
+      <div class="field"><label>Материал, расходник, работа или композит</label>
+        <select class="cell" id="pickItem" style="min-width:260px">${itemOptions()}</select>
+      </div>
+      <div class="field"><label>Объём</label><input id="pickQty" class="narrow" type="number" step="0.0001" placeholder="1"></div>
+      <button class="btn primary" id="btnAddCatalogRow">Добавить в смету</button>
+    </div>`}
+  </div>`;
+}
+
+/* ======================= SAVED ESTIMATES TAB ======================= */
+function viewSaved(){
+  if(!state.estimates.length){
+    return `
+    <div class="topline"><div><h2>Сохранённые сметы</h2><div class="hint">Здесь появятся сметы после сохранения.</div></div></div>
+    <div class="sheet"><div class="empty">Пока нет сохранённых смет. Перейдите на вкладку «Смета», соберите позиции и нажмите «Сохранить смету».</div></div>`;
+  }
+  const cards = state.estimates.slice().reverse().map(e=>{
+    let sumMat=0,sumCons=0,sumLabor=0;
+    (e.rows||[]).forEach(r=>{ const c=rowCost(r); sumMat+=c.mat; sumCons+=c.consumable; sumLabor+=c.labor; });
+    const date = new Date(e.savedAt);
+    return `
+    <div class="saved-card" data-id="${e.id}">
+      <div class="info">
+        <h4>${esc(e.name||'Без названия')}</h4>
+        <p>${(e.rows||[]).length} позиций · сохранено ${date.toLocaleDateString('ru-RU')} ${date.toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit'})}</p>
+      </div>
+      <div class="sum">
+        <b>${fmt(sumMat+sumCons+sumLabor)} ₽</b>
+        <div>материалы ${fmt(sumMat)} ₽ · расходники ${fmt(sumCons)} ₽ · работа ${fmt(sumLabor)} ₽</div>
+      </div>
+      <div class="saved-actions">
+        <button class="btn small" data-act="open-estimate" data-id="${e.id}">Открыть</button>
+        <button class="btn small ghost" data-act="export-estimate" data-id="${e.id}">JSON</button>
+        <button class="btn small ghost danger" data-act="del-estimate" data-id="${e.id}">Удалить</button>
+      </div>
+    </div>`;
+  }).join('');
+  return `
+  <div class="topline"><div><h2>Сохранённые сметы</h2><div class="hint">${state.estimates.length} шт.</div></div></div>
+  ${cards}`;
+}
+
+/* ======================= EVENT HANDLING ======================= */
+function attachHandlers(){
+  const main = document.getElementById('main');
+
+  // ---- Materials ----
+  const btnAddMat = document.getElementById('btnAddMat');
+  if(btnAddMat) btnAddMat.addEventListener('click', ()=>{
+    const name = document.getElementById('newMatName').value.trim();
+    const category = document.getElementById('newMatCategory').value || 'material';
+    const unit = document.getElementById('newMatUnit').value.trim() || 'шт';
+    const price = Number(document.getElementById('newMatPrice').value)||0;
+    const packageQty = Number(document.getElementById('newMatQty').value)||1;
+    if(!name){ document.getElementById('newMatName').focus(); return; }
+    state.materials.push({id:uid(), name, category, unit, price, packageQty});
+    scheduleSave(); render();
+  });
+
+  main.querySelectorAll('[data-act="mat-field"]').forEach(el=>{
+    el.addEventListener('change', ()=>{
+      const tr = el.closest('tr'); const id = tr.dataset.id;
+      const m = getMaterial(id); if(!m) return;
+      const field = el.dataset.field;
+      m[field] = (field==='price'||field==='packageQty') ? Number(el.value)||0 : el.value;
+      scheduleSave(); render();
+    });
+  });
+  main.querySelectorAll('[data-act="del-mat"]').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      if(!confirm('Удалить материал? Он также будет считаться отсутствующим в композитах и сметах, где использовался.')) return;
+      state.materials = state.materials.filter(m=>m.id!==el.dataset.id);
+      scheduleSave(); render();
+    });
+  });
+
+  // ---- Works ----
+  const btnAddWork = document.getElementById('btnAddWork');
+  if(btnAddWork) btnAddWork.addEventListener('click', ()=>{
+    const name = document.getElementById('newWorkName').value.trim();
+    const unit = document.getElementById('newWorkUnit').value.trim() || 'м2';
+    const price = Number(document.getElementById('newWorkPrice').value)||0;
+    if(!name){ document.getElementById('newWorkName').focus(); return; }
+    state.works.push({id:uid(), name, unit, price, components:[]});
+    scheduleSave(); render();
+  });
+  main.querySelectorAll('[data-act="work-field"]').forEach(el=>{
+    el.addEventListener('change', ()=>{
+      const w = getWork(el.dataset.work); if(!w) return;
+      const field = el.dataset.field;
+      w[field] = field==='price' ? (Number(el.value)||0) : el.value;
+      scheduleSave(); render();
+    });
+  });
+  main.querySelectorAll('[data-act="del-work"]').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      if(!confirm('Удалить вид работы? Она также будет считаться отсутствующей там, где использовалась.')) return;
+      state.works = state.works.filter(w=>w.id!==el.dataset.id);
+      scheduleSave(); render();
+    });
+  });
+  main.querySelectorAll('[data-act="add-work-line"]').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      const workId = el.dataset.work;
+      const sel = document.getElementById('newWorkComp_'+workId);
+      const rateInput = document.getElementById('newWorkCompRate_'+workId);
+      const val = sel.value; if(!val) return;
+      const [refType, refId] = val.split(':');
+      if(refType==='work' && refId===workId){ alert('Работа не может включать сама себя.'); return; }
+      const rate = Number(rateInput.value)||0;
+      const w = getWork(workId);
+      w.components = w.components || [];
+      w.components.push({refType, refId, rate});
+      scheduleSave(); render();
+    });
+  });
+  main.querySelectorAll('[data-act="work-comp-rate"]').forEach(el=>{
+    el.addEventListener('change', ()=>{
+      const w = getWork(el.dataset.work); if(!w) return;
+      w.components[Number(el.dataset.idx)].rate = Number(el.value)||0;
+      scheduleSave(); render();
+    });
+  });
+  main.querySelectorAll('[data-act="del-work-line"]').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      const w = getWork(el.dataset.work); if(!w) return;
+      w.components.splice(Number(el.dataset.idx),1);
+      scheduleSave(); render();
+    });
+  });
+
+  // ---- Composites ----
+  const btnAddComp = document.getElementById('btnAddComp');
+  if(btnAddComp) btnAddComp.addEventListener('click', ()=>{
+    const name = document.getElementById('newCompName').value.trim();
+    const outputUnit = document.getElementById('newCompUnit').value.trim() || 'м2';
+    if(!name){ document.getElementById('newCompName').focus(); return; }
+    state.composites.push({id:uid(), name, outputUnit, laborPrice:0, components:[]});
+    scheduleSave(); render();
+  });
+  main.querySelectorAll('[data-act="comp-field"]').forEach(el=>{
+    el.addEventListener('change', ()=>{
+      const id = el.dataset.comp; const c = getComposite(id); if(!c) return;
+      const field = el.dataset.field;
+      c[field] = field==='laborPrice' ? (Number(el.value)||0) : el.value;
+      scheduleSave(); render();
+    });
+  });
+  main.querySelectorAll('[data-act="del-comp"]').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      if(!confirm('Удалить композит?')) return;
+      state.composites = state.composites.filter(c=>c.id!==el.dataset.comp);
+      scheduleSave(); render();
+    });
+  });
+  main.querySelectorAll('[data-act="add-comp-line"]').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      const compId = el.dataset.comp;
+      const sel = document.getElementById('newComp_'+compId);
+      const rateInput = document.getElementById('newCompRate_'+compId);
+      const val = sel.value; if(!val) return;
+      const [refType, refId] = val.split(':');
+      const rate = Number(rateInput.value)||0;
+      if(refType==='composite' && refId===compId){ alert('Композит не может включать сам себя.'); return; }
+      const c = getComposite(compId);
+      c.components = c.components || [];
+      c.components.push({refType, refId, rate});
+      scheduleSave(); render();
+    });
+  });
+  main.querySelectorAll('[data-act="comp-rate"]').forEach(el=>{
+    el.addEventListener('change', ()=>{
+      const c = getComposite(el.dataset.comp); if(!c) return;
+      c.components[Number(el.dataset.idx)].rate = Number(el.value)||0;
+      scheduleSave(); render();
+    });
+  });
+  main.querySelectorAll('[data-act="del-comp-line"]').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      const c = getComposite(el.dataset.comp); if(!c) return;
+      c.components.splice(Number(el.dataset.idx),1);
+      scheduleSave(); render();
+    });
+  });
+
+  // ---- Estimate draft ----
+  const btnNewDraft = document.getElementById('btnNewDraft');
+  if(btnNewDraft) btnNewDraft.addEventListener('click', ()=>{
+    if((state.draft.rows||[]).length && !confirm('Начать новую смету? Несохранённые изменения текущей будут потеряны.')) return;
+    state.draft = {id:null, name:'', rows:[]};
+    scheduleSave(); render();
+  });
+  const draftNameEl = document.getElementById('draftName');
+  if(draftNameEl) draftNameEl.addEventListener('change', ()=>{
+    state.draft.name = draftNameEl.value; scheduleSave();
+  });
+  const btnSaveDraft = document.getElementById('btnSaveDraft');
+  if(btnSaveDraft) btnSaveDraft.addEventListener('click', ()=>{
+    const name = (document.getElementById('draftName').value||'').trim();
+    if(!name){ alert('Укажите название сметы перед сохранением.'); document.getElementById('draftName').focus(); return; }
+    if(!(state.draft.rows||[]).length){ alert('Добавьте хотя бы одну позицию.'); return; }
+    if(state.draft.id){
+      const existing = state.estimates.find(e=>e.id===state.draft.id);
+      if(existing){ existing.name=name; existing.rows=state.draft.rows; existing.savedAt=Date.now(); }
+      else state.estimates.push({id:state.draft.id, name, rows:state.draft.rows, savedAt:Date.now()});
+    } else {
+      const id = uid();
+      state.estimates.push({id, name, rows:state.draft.rows, savedAt:Date.now()});
+      state.draft.id = id;
+    }
+    scheduleSave(); currentTab='saved'; render();
+  });
+
+  main.querySelectorAll('.type-toggle button').forEach(b=>{
+    b.addEventListener('click', ()=>{ state._addKind = b.dataset.rowtype; render(); });
+  });
+  const btnAddCatalogRow = document.getElementById('btnAddCatalogRow');
+  if(btnAddCatalogRow) btnAddCatalogRow.addEventListener('click', ()=>{
+    const val = document.getElementById('pickItem').value;
+    const qty = Number(document.getElementById('pickQty').value)||0;
+    if(!val || qty<=0){ alert('Выберите позицию и укажите объём больше нуля.'); return; }
+    const [refType, refId] = val.split(':');
+    state.draft.rows = state.draft.rows || [];
+    state.draft.rows.push({kind:'catalog', refType, refId, qty});
+    scheduleSave(); render();
+  });
+  const btnAddCustomRow = document.getElementById('btnAddCustomRow');
+  if(btnAddCustomRow) btnAddCustomRow.addEventListener('click', ()=>{
+    const name = document.getElementById('customName').value.trim();
+    const unit = document.getElementById('customUnit').value.trim()||'усл.';
+    const qty = Number(document.getElementById('customQty').value)||0;
+    const unitPriceV = Number(document.getElementById('customPrice').value)||0;
+    const laborUnitPrice = Number(document.getElementById('customLabor').value)||0;
+    if(!name || qty<=0){ alert('Укажите название и объём больше нуля.'); return; }
+    state.draft.rows = state.draft.rows || [];
+    state.draft.rows.push({kind:'custom', name, unit, qty, unitPrice:unitPriceV, laborUnitPrice});
+    scheduleSave(); render();
+  });
+  main.querySelectorAll('[data-act="row-qty"]').forEach(el=>{
+    el.addEventListener('change', ()=>{
+      state.draft.rows[Number(el.dataset.idx)].qty = Number(el.value)||0;
+      scheduleSave(); render();
+    });
+  });
+  main.querySelectorAll('[data-act="del-row"]').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      state.draft.rows.splice(Number(el.dataset.idx),1);
+      state._expandedRows = null;
+      scheduleSave(); render();
+    });
+  });
+  main.querySelectorAll('[data-act="toggle-breakdown"]').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      const idx = Number(el.dataset.idx);
+      state._expandedRows = state._expandedRows || new Set();
+      if(state._expandedRows.has(idx)) state._expandedRows.delete(idx);
+      else state._expandedRows.add(idx);
+      render();
+    });
+  });
+
+  // ---- Saved estimates ----
+  main.querySelectorAll('[data-act="open-estimate"]').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      const e = state.estimates.find(x=>x.id===el.dataset.id); if(!e) return;
+      state.draft = {id:e.id, name:e.name, rows: JSON.parse(JSON.stringify(e.rows))};
+      currentTab='estimate'; render();
+    });
+  });
+  main.querySelectorAll('[data-act="del-estimate"]').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      if(!confirm('Удалить смету безвозвратно?')) return;
+      state.estimates = state.estimates.filter(e=>e.id!==el.dataset.id);
+      scheduleSave(); render();
+    });
+  });
+  main.querySelectorAll('[data-act="export-estimate"]').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      const e = state.estimates.find(x=>x.id===el.dataset.id); if(!e) return;
+      downloadJSON(e, (e.name||'smeta').replace(/[^a-zа-я0-9_\- ]/gi,'') + '.json');
+    });
+  });
+}
+
+/* ======================= EXPORT / IMPORT ======================= */
+function downloadJSON(obj, filename){
+  const blob = new Blob([JSON.stringify(obj, null, 2)], {type:'application/json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+
+document.getElementById('btnExport').addEventListener('click', ()=>{
+  const payload = {
+    materials: state.materials,
+    works: state.works,
+    composites: state.composites,
+    estimates: state.estimates,
+    exportedAt: new Date().toISOString()
+  };
+  downloadJSON(payload, 'smeta-data.json');
+});
+
+document.getElementById('btnImport').addEventListener('click', ()=>{
+  document.getElementById('fileImport').click();
+});
+document.getElementById('fileImport').addEventListener('change', (e)=>{
+  const file = e.target.files[0]; if(!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try{
+      const data = JSON.parse(reader.result);
+      if(!data || !Array.isArray(data.materials)) throw new Error('bad format');
+      if(!confirm('Заменить текущие данные содержимым файла? Действие необратимо.')) return;
+      state.materials = data.materials || [];
+      state.works = data.works || [];
+      state.composites = data.composites || [];
+      state.estimates = data.estimates || [];
+      state.draft = {id:null, name:'', rows:[]};
+      scheduleSave(); render();
+    }catch(err){
+      alert('Не удалось прочитать файл — проверьте, что это JSON, экспортированный этим приложением.');
+    }
+  };
+  reader.readAsText(file);
+  e.target.value = '';
+});
+
+/* ======================= INIT ======================= */
+loadState();
+</script>
+</body>
+</html>
