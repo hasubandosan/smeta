@@ -40,3 +40,17 @@ t('ванная: закуплено, неизвестное не выдуман�
 t('миграция: сохраняет неизвестные поля, не принимает схему из будущего', () => { const m = SM.model.migrate({name: 'X', custom: 7, geometry: {walls: [{id: 'a', len: 1}]}});
   assert.strictEqual(m.custom, 7); assert.strictEqual(m.schemaVersion, SM.model.SCHEMA); assert.deepStrictEqual(m.goals, []); assert.throws(() => SM.model.migrate({schemaVersion: 99})); });
 console.log('\nВсе проверки пройдены: ' + n);
+
+/* ---- смета и закупка ---- */
+require('../js/estimate.js');
+t('смета: плитка на пол ванной, упаковки, купленное, неизвестное', () => {
+  const o = SM.seeds.bathroom(), room = o.geometry.rooms[0];
+  const S = {object: o, materials: [{id: 'g', name: 'Клей', unit: 'кг', packQty: 25, price: 700}, {id: 'x', name: 'Затирка', unit: 'кг', packQty: null, price: 300}],
+    techs: [{id: 't', name: 'Плитка', params: [{key: 'k', def: 5}], ops: [{id: 'o1', name: 'Укладка', unit: 'м2', price: 1000, qty: 'floor', mats: [{id: 'a', matId: 'g', rate: '5*k/5'}, {id: 'b', matId: 'x', rate: '0.5'}]}, {id: 'o2', name: 'Неизв.', unit: 'м2', price: 10, qty: 'nope', mats: []}]}],
+    plan: [{id: 'p', techId: 't', roomId: room.id, values: {}}], fin: {waste: 10, reserve: 0}, bought: {g: 25}};
+  const R = SM.est.compute(S), g = R.buy.find(b => b.id === 'g'), x = R.buy.find(b => b.id === 'x');
+  near(R.rows[0].q, 15.75); near(R.work, 15750); near(g.base, 78.75); near(g.total, 86.625); near(g.rest, 61.625); assert.strictEqual(g.packs, 3); near(g.cost, 2100);
+  assert.strictEqual(x.packs, null); assert.strictEqual(x.cost, null); assert.deepStrictEqual(R.rows[1].missing, ['nope']); assert.ok(R.incomplete); });
+t('короб: площадь покраски из размеров (0.6×0.4×2.7 → 5.4 м²)', () => { const o = SM.seeds.bathroom();
+  const V = SM.est.vars({object: o}, {roomId: o.geometry.rooms[0].id}, {params: []}); near(V.box, 5.4); });
+console.log('Итого проверок: ' + n);

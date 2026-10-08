@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html lang="ru"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Помощник строителя</title>
+<style>
+:root{--bg:#1e2327;--card:#2a3036;--tx:#e6e9eb;--mu:#8e99a2;--ac:#4aa3ff;--wr:#e0a030}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:15px system-ui,sans-serif}
+header{position:sticky;top:0;background:#171b1e;padding:8px;display:flex;gap:6px;overflow-x:auto;z-index:2}
+header button{background:none;border:0;color:var(--mu);padding:8px 12px;font-size:15px;border-radius:6px;white-space:nowrap}header button.on{background:var(--card);color:var(--tx)}
+main{padding:12px;max-width:1000px;margin:auto}.card{background:var(--card);border-radius:8px;padding:12px;margin:10px 0}
+input,select,button{font:inherit;background:#1a1f23;color:var(--tx);border:1px solid #3a434b;border-radius:5px;padding:5px 7px;margin:2px}button{cursor:pointer}
+table{border-collapse:collapse;display:block;overflow-x:auto}th{color:var(--mu);font-weight:400;text-align:left;font-size:13px}td{padding:2px 6px 2px 0}.n{text-align:right}
+.kpi{display:flex;gap:16px;flex-wrap:wrap;margin:8px 0}.kpi b{display:block;font-size:18px}.hint{color:var(--mu)}.warn{color:var(--wr);margin:4px 0}
+.op{border-left:3px solid #3a434b;padding-left:10px;margin:10px 0}.mat{margin-left:14px}h2,h3,h4{margin:8px 0}
+</style></head><body>
+<header id="nav"></header><main id="main"></main>
+<script src="js/core.js"></script><script src="js/geometry.js"></script><script src="js/model.js"></script><script src="js/seeds.js"></script><script src="js/estimate.js"></script><script src="js/ui.js"></script>
+</body></html>

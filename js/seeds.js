@@ -13,7 +13,7 @@
       // проёмы: на какой стене — неизвестно (wallId пуст)
       [['дверь', 0.9, 2.1], ['дверь', 0.8, 2.2], ['окно', 0.5, 0.3]].forEach(([kind, ww, h]) => g.openings.push({id: SM.uid(), roomId: room.id, wallId: null, kind, w: ww, h}));
       const S = (kind, name, wallId) => { const s = {id: SM.uid(), roomId: room.id, kind, name, wallId: wallId || null}; o.surfaces.push(s); return s; };
-      const floor = S('floor', 'Пол'), ceil = S('ceiling', 'Потолок'), box = S('box', 'Короб'), ws = w.map((x, i) => S('wall', 'Стена ' + (i + 1), x.id));
+      const floor = S('floor', 'Пол'), ceil = S('ceiling', 'Потолок'), box = Object.assign(S('box', 'Короб'), {w: 0.6, l: 0.4, h: 2.7, assumed: true}), ws = w.map((x, i) => S('wall', 'Стена ' + (i + 1), x.id));
       // состояние: известно только то, что сказал владелец; остальное UNKNOWN по умолчанию
       M.setState(o, floor.id, 'existing_floor', 'YES');
       M.addObservation(o, {target: floor.id, what: 'existing_floor', params: {thickness: null}, note: 'существующий пол, нужен демонтаж'});

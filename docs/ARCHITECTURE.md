@@ -25,6 +25,8 @@
 | `materials.js`, `units.js` | ⏳ Фаза 6 | requirement ≠ product, единицы, потери/резерв |
 | `estimate.js`, `purchase.js` | ⏳ Фаза 7 | смета-снимок, закупки required/purchased/used/to_buy |
 | `execution.js` | ⏳ Фаза 8 | статусы работ, факт, приёмка |
+| `estimate.js` | ✅ (срез) | `SM.est.compute(S)`: план → операции → объёмы, работа, потребность материалов, потери/запас, упаковки, куплено, неизвестное с причиной |
+| `ui.js` + `new.html` | ✅ (срез) | новый интерфейс на новой модели; данные в `stroysmeta:model` (рядом копия `:backup`). Старый `index.html` не тронут |
 | `storage.js` | ⏳ | localStorage, `schemaVersion`, миграции, снимки, облако Gist (переезд из `app.js`) |
 | `planner.js` | ⏳ Фаза 10 | SVG 2D-планировщик |
 
