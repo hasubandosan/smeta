@@ -1,6 +1,6 @@
 'use strict';
 /* ================= БАЗА ================= */
-const KEY = 'stroysmeta:v2';
+const KEY = 'stroysmeta:v3';
 const uid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-3);
 const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 const fmt = n => isFinite(n) ? n.toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—';
@@ -9,64 +9,98 @@ const n2 = x => Math.round((+x || 0) * 100) / 100;
 const byId = (a, id) => a.find(x => x.id === id);
 const $ = id => document.getElementById(id), val = id => ($(id) ? $(id).value.trim() : '');
 const num = v => { const x = parseFloat(String(v).replace(',','.')); return isFinite(x) ? x : 0; };
-
-const NOTE_STYLE = `## 1. Инструмент
-- Правило штукатурное 1.5–2.5 м, уровень, лазерный нивелир, миксер
-- **СИЗ:** сапоги, наколенники, перчатки, респиратор
-
-## 2. Материалы и нормы расхода
-- Пескобетон М300: ~18–20 кг/м² на слой 10 мм (запас +10%)
-- Фибра: ~0.6–0.9 кг на 1 м³ раствора
-- Плёнка для укрытия, демпферная лента по периметру (8–10 мм)
-
-## 3. Условия
-- Температура воздуха и основания от +5 до +25 °C
-- Первые 3–7 дней без сквозняков, накрыть плёнкой
-
-## 4. Частые ошибки
-- Толщина плавающей стяжки меньше 50 мм — растрескается
-- Нет демпферной ленты — стяжка встанет «домиком»
-- Слишком много воды — усадка и трещины
-- Нет деформационных швов — хаотичные трещины
-
-## 5. Приёмка
-- Просвет под 2-метровым правилом **≤ 2 мм**
-- Не пылит и не крошится при трении
-
-## 6. Варианты
-Полусухая, [[Мокрая традиционная стяжка]], сухая (Кнауф) — см. вложенные этапы.`;
+const CATS = {cond:'Условие', error:'Ошибка', accept:'Приёмка', note:'Заметка'};
 
 function seed() {
+  const T = (name) => ({id:uid(), name, note:''});
+  const tl = {rule:T('Правило штукатурное 1.5–2.5 м'), level:T('Уровень'), laser:T('Лазерный нивелир'), mixer:T('Бетономешалка'), heli:T('Затирочная машина («вертолёт»)'),
+    float:T('Пластиковая тёрка'), steps:T('Бетоноступы'), screw:T('Шуруповёрт'), jig:T('Электролобзик'), knee:T('Наколенники'), resp:T('Респиратор'), cutter:T('Штроборез / болгарка по бетону')};
   const m = (name, category, unit, price, packQty) => ({id:uid(), name, category, unit, price, packQty});
-  const sand = m('Пескобетон М300','material','кг',280,40), fib = m('Фиброволокно','material','кг',250,0.6),
-        film = m('Плёнка полиэтиленовая','material','м2',450,60), keram = m('Керамзит 0–5 мм','material','л',220,50),
-        gvl = m('Элемент пола ГВЛВ 20 мм','material','м2',700,0.72), pva = m('Клей ПВА строительный','material','кг',900,5),
-        screws = m('Саморезы MN 3.9×19','consumable','шт',500,1000);
-  const st = (parentId, name, unit, notes, components) => ({id:uid(), parentId, name, unit:unit||'', price:0, notes:notes||'', components:components||[]});
-  const c = (m, rate) => ({refType:'material', refId:m.id, rate});
-  const r2 = st('', '2. Черновые и инженерные работы');
-  const r25 = st(r2.id, '2.5. Черновая отделка поверхностей');
-  const r256 = st(r25.id, '2.5.6. Устройство стяжки пола (мокрая, полусухая, сухая)', '', NOTE_STYLE);
-  const stages = [r2, r25, r256,
-    st(r256.id, 'Полусухая стяжка 60 мм', 'м2', 'Расход посчитан на толщину **60 мм**: пескобетон 19 кг/м² на каждые 10 мм (19*6) плюс запас 10%.\n\nЦену работы введите выше. Для другой толщины поменяйте множитель в расходе.',
-       [c(sand,'19*6*1.1'), c(fib,'0.75*0.06'), c(film,'1.1')]),
-    st(r256.id, 'Мокрая традиционная стяжка', 'м2', 'Жидкий раствор, маяки, выдержка 7–14 дней под плёнкой. Добавьте материалы и цену сами.'),
-    st(r256.id, 'Сухая стяжка (Кнауф)', 'м2', 'Засыпка керамзита слоем 20 мм + элементы пола ГВЛВ с запасом.',
-       [c(gvl,'1.12'), c(keram,'20'), c(pva,'0.05'), c(screws,'13')]),
-    st(r256.id, '2.5.6.1. Выравнивание наливным полом', 'м2', 'Нужен **только** как тонкий финишный слой под кварцвинил и линолеум.\n\nНе нужен под плитку и ламинат, и не годится для выравнивания перепадов высоты.')];
-  const P = (label, key, value) => ({id:uid(), label, key, value});
-  const obj = {id:uid(), name:'Пример: квартира 50 м²', note:'Можно удалить', params:[P('Площадь пола, м²','floor',50),P('Площадь стен, м²','walls',120),P('Периметр, м','perimeter',30)],
-    items:[{id:uid(), type:'stage', refId:stages[3].id, qty:'floor'}]};
-  return {materials:[sand,fib,film,keram,gvl,pva,screws], composites:[], stages, objects:[obj]};
+  const sand = m('Пескобетон М300','material','кг',280,40), fib = m('Фиброволокно','material','кг',250,0.6), film = m('Плёнка полиэтиленовая','material','м2',450,60),
+    keram = m('Керамзит 0–5 мм','material','л',220,50), gvl = m('Элемент пола ГВЛВ 20 мм','material','м2',700,0.72), pva = m('Клей ПВА строительный','material','кг',900,5),
+    tape = m('Демпферная лента 8–10 мм','material','м',400,25), plast = m('Пластификатор','material','л',300,5), screws = m('Саморезы MN 3.9×19','consumable','шт',500,1000),
+    discs = m('Алмазный диск','consumable','шт',1200,1);
+  const P = (key, label, unit, def) => ({id:uid(), key, label, unit, def});
+  const params = [P('floor','Площадь пола','м²',0), P('walls','Площадь стен','м²',0), P('perimeter','Периметр','м',0), P('thickness','Толщина стяжки','мм',60)];
+  const N = (parentId, name, o) => Object.assign({id:uid(), parentId, name, mode:'steps', unit:'', price:0, vol:'', components:[], tools:[], notes:[]}, o || {});
+  const c = (mm, rate) => ({refType:'material', refId:mm.id, rate});
+  const nt = (cat, text) => ({id:uid(), cat, text});
+  const r2 = N('', '2. Черновые и инженерные работы'), r25 = N(r2.id, '2.5. Черновая отделка поверхностей');
+  const r256 = N(r25.id, '2.5.6. Устройство стяжки пола', {mode:'choice', notes:[
+    nt('note','Три технологии на выбор: полусухая, мокрая, сухая (Кнауф). При применении к объекту выбирается одна.'),
+    nt('error','Толщина плавающей стяжки меньше 50 мм — растрескается'), nt('error','Нет демпферной ленты по периметру — стяжка встанет «домиком»'),
+    nt('error','Слишком много воды — усадка и трещины'), nt('error','Нет деформационных швов — хаотичные трещины')]});
+  const semi = N(r256.id, 'Полусухая стяжка', {notes:[nt('cond','Температура воздуха и основания от +5 до +25 °C'), nt('cond','Первые 3–7 дней без сквозняков, накрыть плёнкой'),
+    nt('accept','Просвет под 2-метровым правилом ≤ 2 мм'), nt('accept','Не пылит и не крошится при трении'), nt('note','Пешеходная нагрузка через 12 часов, плитка через 7–10 дней')]});
+  const semiSteps = [
+    N(semi.id, '1. Подготовка основания: демпферная лента по периметру', {unit:'м', price:40, vol:'perimeter', components:[c(tape,'1.05')]}),
+    N(semi.id, '2. Приготовление смеси и укладка по маякам', {unit:'м2', price:350, vol:'floor', tools:[tl.mixer.id, tl.rule.id, tl.laser.id, tl.steps.id],
+      components:[c(sand,'19*thickness/10*1.1'), c(fib,'0.75*thickness/1000'), c(plast,'0.02')], notes:[nt('note','Расход пескобетона 18–20 кг/м² на каждые 10 мм слоя, запас +10%. Формула берёт толщину из параметров объекта.')]}),
+    N(semi.id, '3. Затирка поверхности', {unit:'м2', price:120, vol:'floor', tools:[tl.heli.id, tl.float.id], notes:[nt('note','Через 1–2 часа «вертолётом»; без него через 20–30 минут тёркой')]}),
+    N(semi.id, '4. Нарезка деформационных швов', {unit:'м', price:150, vol:'', tools:[tl.cutter.id], components:[c(discs,'0.01')], notes:[nt('note','В дверных проёмах и в помещениях больше 20 м², глубина 1/3 толщины. Длину швов укажите при применении.')]}),
+    N(semi.id, '5. Уход: укрытие плёнкой на 3–7 дней', {unit:'м2', price:30, vol:'floor', components:[c(film,'1.1')]})];
+  const wet = N(r256.id, 'Мокрая традиционная стяжка', {notes:[nt('cond','Максимальная прочность, но сохнет до 28 дней'), nt('note','Выдержка под плёнкой 7–14 дней')]});
+  const wetSteps = [
+    N(wet.id, '1. Подготовка основания: демпферная лента', {unit:'м', price:40, vol:'perimeter', components:[c(tape,'1.05')]}),
+    N(wet.id, '2. Заливка раствора и выравнивание по маякам', {unit:'м2', price:400, vol:'floor', tools:[tl.mixer.id, tl.rule.id, tl.laser.id], components:[c(sand,'19*thickness/10*1.05'), c(plast,'0.03')]}),
+    N(wet.id, '3. Пролив водой и укрытие плёнкой', {unit:'м2', price:30, vol:'floor', components:[c(film,'1.1')]})];
+  const dry = N(r256.id, 'Сухая стяжка (Кнауф)', {notes:[nt('cond','Влажность воздуха ≤ 60%, температура от +10 °C'), nt('cond','Минимальная толщина: 20 мм засыпка + 20 мм ГВЛВ'), nt('note','Пешеходная нагрузка сразу, покрытие через 24 часа')]});
+  const drySteps = [
+    N(dry.id, '1. Пароизоляция с заходом на стены', {unit:'м2', price:30, vol:'floor', components:[c(film,'1.1')]}),
+    N(dry.id, '2. Засыпка керамзита слоем 20 мм', {unit:'м2', price:180, vol:'floor', tools:[tl.rule.id, tl.laser.id], components:[c(keram,'20')], notes:[nt('note','10 л на 1 м² при слое 10 мм')]}),
+    N(dry.id, '3. Укладка элементов пола ГВЛВ на клей и саморезы', {unit:'м2', price:350, vol:'floor', tools:[tl.screw.id, tl.jig.id, tl.knee.id],
+      components:[c(gvl,'1.12'), c(pva,'0.05'), c(screws,'13')], notes:[nt('note','Шаг саморезов 15–20 см, швы с перевязкой, фальцы на клей')]})];
+  const lev = N(r25.id, '2.5.7. Выравнивание наливным полом', {unit:'м2', price:250, vol:'floor', tools:[tl.resp.id, tl.mixer.id], notes:[
+    nt('cond','Нужен только как тонкий финишный слой 1–3 мм под кварцвинил и линолеум'), nt('error','Не годится для выравнивания перепадов 3–5 см — дорого и трескается'),
+    nt('error','Под плитку и ламинат не нужен')]});
+  const stages = [r2, r25, r256, semi, ...semiSteps, wet, ...wetSteps, dry, ...drySteps, lev];
+  const sel = {}; [r2, r25, r256, semi, ...semiSteps].forEach(s => sel[s.id] = {});
+  const obj = {id:uid(), name:'Пример: квартира 50 м²', note:'Можно удалить', values:{floor:50, walls:120, perimeter:30, thickness:60}, sel, pick:{[r256.id]:semi.id}, extra:[]};
+  sel[semiSteps[3].id] = {q:'12'};
+  return {materials:[sand,fib,film,keram,gvl,pva,tape,plast,screws,discs], composites:[], tools:Object.values(tl), params, stages, objects:[obj]};
 }
-function load() {
-  try { const raw = localStorage.getItem(KEY); if (raw) return Object.assign({materials:[],composites:[],stages:[],objects:[]}, JSON.parse(raw)); } catch (e) { console.error(e); }
-  return seed();
+
+/* заметки Obsidian → пункты и инструменты */
+function parseNote(text) {
+  const items = [], tools = []; let cat = 'note', inTools = false;
+  const topic = t => { t = t.toLowerCase(); inTools = /инструмент|сиз/.test(t) && !/материал/.test(t);
+    cat = /ошибк/.test(t) ? 'error' : /приём|прием|допуск|чек/.test(t) ? 'accept' : /услови|микроклимат|предподготов|сопряжен/.test(t) ? 'cond' : 'note'; };
+  for (const raw of String(text || '').replace(/\r/g,'').split('\n')) {
+    const line = raw.replace(/\t/g,'    '); let m;
+    if ((m = /^\s*#{1,6}\s+(.*)$/.exec(line))) { topic(m[1]); continue; }
+    if ((m = /^\s*\*\*([^*]+?)\*\*:?\s*$/.exec(line))) { topic(m[1]); continue; }
+    if (!(m = /^\s*(?:[-*+]|\d+\.)\s+(.*)$/.exec(line))) continue;
+    const t = m[1].replace(/!\[\[[^\]]*\]\]/g,'').replace(/\[\[([^\]|]+)(?:\|[^\]]*)?\]\]/g,'$1').replace(/\*\*|__|`/g,'').replace(/(^|\s)_([^_]+)_/g,'$1$2').trim();
+    if (!t) continue;
+    if (inTools) { t.replace(/^[^:]{0,40}:\s*/,'').split(/[,;/]|\.\s/).map(x => x.replace(/\.$/,'').trim()).filter(x => x && x.length < 60).forEach(x => tools.push(x[0].toUpperCase() + x.slice(1))); continue; }
+    items.push({id:uid(), cat, text:t});
+  }
+  return {items, tools};
 }
-let S = load();
-const ui = {tab:'stages', stageId:null, objId:null, collapsed:new Set(), rows:new Set(), edit:new Set(), custom:false, q:''};
+function getTool(name) { let t = S.tools.find(x => x.name.toLowerCase() === name.toLowerCase()); if (!t) { t = {id:uid(), name, note:''}; S.tools.push(t); } return t; }
+
+function migrate(d) {
+  d = Object.assign({materials:[], composites:[], tools:[], params:[], stages:[], objects:[]}, d); S = d;
+  if (!d.params.length) d.params = [{id:uid(),key:'floor',label:'Площадь пола',unit:'м²',def:0},{id:uid(),key:'walls',label:'Площадь стен',unit:'м²',def:0},{id:uid(),key:'perimeter',label:'Периметр',unit:'м',def:0}];
+  for (const s of d.stages) {
+    if (typeof s.notes === 'string') { const p = parseNote(s.notes); s.notes = p.items; s.tools = (s.tools || []).concat(p.tools.map(n => getTool(n).id)); }
+    Object.assign(s, {mode:s.mode || 'steps', unit:s.unit || '', price:s.price || 0, vol:s.vol || '', components:s.components || [], tools:s.tools || [], notes:s.notes || []});
+  }
+  for (const o of d.objects) {
+    o.values = o.values || {}; o.sel = o.sel || {}; o.pick = o.pick || {}; o.extra = o.extra || [];
+    for (const p of o.params || []) { o.values[p.key] = p.value; if (!d.params.some(x => x.key === p.key)) d.params.push({id:uid(), key:p.key, label:p.label, unit:'', def:0}); }
+    for (const it of o.items || []) { if (it.type === 'stage' && byId(d.stages, it.refId)) { for (const a of anc(it.refId)) o.sel[a.id] = o.sel[a.id] || {}; o.sel[it.refId] = {q:String(it.qty)}; } else o.extra.push(it); }
+    delete o.params; delete o.items;
+  }
+  return d;
+}
+let S = {materials:[], composites:[], tools:[], params:[], stages:[], objects:[]};
+(function load() {
+  try { const raw = localStorage.getItem(KEY) || localStorage.getItem('stroysmeta:v2'); if (raw) { migrate(JSON.parse(raw)); return; } } catch (e) { console.error(e); }
+  S = seed();
+})();
+const ui = {tab:'stages', stageId:null, objId:null, collapsed:new Set(), pexp:new Set(), rows:new Set(), custom:false, q:'', pq:''};
 function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { alert('Не удалось сохранить: ' + e.message); } }
-let saveT; const saveSoon = () => { clearTimeout(saveT); saveT = setTimeout(save, 300); };
 window.addEventListener('beforeunload', save);
 function commit() { save(); render(); }
 
@@ -76,8 +110,9 @@ const getObj = (type, id) => type === 'stage' ? byId(S.stages,id) : type === 'co
 const kids = pid => S.stages.filter(s => (s.parentId || '') === (pid || ''));
 function anc(id) { const a = []; let n = byId(S.stages,id); while (n) { a.unshift(n); n = n.parentId ? byId(S.stages,n.parentId) : null; } return a; }
 const path = id => anc(id).map(s => s.name);
-const topName = id => path(id)[0] || '';
 function descIds(id, acc = new Set()) { kids(id).forEach(k => { acc.add(k.id); descIds(k.id, acc); }); return acc; }
+const defVars = () => { const v = Object.create(null); S.params.forEach(p => v[p.key] = num(p.def)); return v; };
+const objVars = o => { const v = Object.create(null); S.params.forEach(p => v[p.key] = num(o.values[p.key] !== undefined ? o.values[p.key] : p.def)); return v; };
 
 function evalExpr(src, vars) {
   if (typeof src === 'number') return src;
@@ -100,249 +135,257 @@ function evalExpr(src, vars) {
   const v = expr();
   return p === t.length && isFinite(v) ? v : NaN;
 }
-const NOVARS = Object.create(null);
-const rateVal = c => { const v = evalExpr(c.rate, NOVARS); return isNaN(v) ? 0 : v; };
-function vars(o) { const v = Object.create(null); for (const p of o.params || []) v[p.key] = num(p.value); return v; }
+const rateVal = (c, V) => { const v = evalExpr(c.rate, V); return isNaN(v) ? 0 : v; };
 
-function cost(type, id, vis = new Set()) {
+// стоимость 1 ед. самого этапа/композита (без дочерних шагов): {mat, cons, labor, cyc}
+function cost(type, id, V = defVars(), vis = new Set()) {
   const z = {mat:0, cons:0, labor:0, cyc:false};
   if (type === 'material') { const m = byId(S.materials,id); if (!m) return z; z[m.category === 'consumable' ? 'cons' : 'mat'] = unitPrice(m); return z; }
   const o = getObj(type,id); if (!o) return z;
   const k = type[0] + id; if (vis.has(k)) { z.cyc = true; return z; }
   const v = new Set(vis).add(k);
   if (type === 'stage') z.labor = +o.price || 0;
-  for (const c of o.components || []) { const s = cost(c.refType, c.refId, v), r = rateVal(c);
+  for (const c of o.components || []) { const s = cost(c.refType, c.refId, V, v), r = rateVal(c, V);
     z.mat += r*s.mat; z.cons += r*s.cons; z.labor += r*s.labor; if (s.cyc) z.cyc = true; }
   return z;
 }
-function mats(type, id, qty, acc = new Map(), vis = new Set()) {
+function mats(type, id, qty, V, acc = new Map(), vis = new Set()) {
   if (type === 'material') { if (byId(S.materials,id)) acc.set(id, (acc.get(id) || 0) + qty); return acc; }
   const o = getObj(type,id); if (!o) return acc;
   const k = type[0] + id; if (vis.has(k)) return acc;
   const v = new Set(vis).add(k);
-  for (const c of o.components || []) mats(c.refType, c.refId, qty * rateVal(c), acc, v);
+  for (const c of o.components || []) mats(c.refType, c.refId, qty * rateVal(c, V), V, acc, v);
   return acc;
 }
-function info(o, it) {
-  const q = evalExpr(it.qty, vars(o)), bad = isNaN(q), qty = bad ? 0 : q;
-  let name, unit, grp = 'Прочее', parent = '', uc = {mat:0,cons:0,labor:0,cyc:false}, pill = it.type, pillLabel;
-  if (it.type === 'custom') {
-    name = it.name; unit = it.unit; pill = it.category; pillLabel = 'своя: ' + ({material:'материал',consumable:'расходник',labor:'работа'}[it.category]);
-    uc[it.category === 'consumable' ? 'cons' : it.category === 'labor' ? 'labor' : 'mat'] = +it.price || 0;
-  } else {
-    const obj = getObj(it.type, it.refId);
-    name = obj ? obj.name : '(удалено)'; unit = obj ? obj.unit : '';
-    if (obj) uc = cost(it.type, it.refId);
-    if (it.type === 'stage' && obj) { parent = path(obj.parentId).join(' › '); grp = topName(obj.id); }
-    if (it.type === 'material' && obj && obj.category === 'consumable') pill = 'consumable';
-    pillLabel = {stage:'этап', composite:'композит', material:'материал', consumable:'расходник'}[pill];
-  }
-  const mat = qty*uc.mat, cons = qty*uc.cons, labor = qty*uc.labor;
-  return {name, unit, parent, grp, uc, pill, pillLabel, q:qty, bad, mat, cons, labor, total:mat+cons+labor, cyc:uc.cyc};
+
+/* --- применение этапов к объекту --- */
+function includedNodes(o) {
+  const out = [], walk = pid => {
+    const parent = pid ? byId(S.stages, pid) : null; let list = kids(pid);
+    if (parent && parent.mode === 'choice') list = list.filter(x => x.id === o.pick[pid]);
+    for (const s of list) { if (!o.sel[s.id]) continue; out.push(s); walk(s.id); }
+  };
+  walk(''); return out;
 }
-function totals(o) {
+function includeSubtree(o, id) {
+  const s = byId(S.stages, id); o.sel[id] = o.sel[id] || {}; ui.pexp.add(id);
+  let ch = kids(id);
+  if (s.mode === 'choice') { if (!ch.length) return; const pk = ch.find(x => x.id === o.pick[id]) || ch[0]; o.pick[id] = pk.id; ch = [pk]; }
+  ch.forEach(k => includeSubtree(o, k.id));
+}
+function includeNode(o, id) {
+  const chain = anc(id);
+  chain.forEach((a, i) => { o.sel[a.id] = o.sel[a.id] || {}; ui.pexp.add(a.id);
+    if (i) { const par = chain[i-1]; if (par.mode === 'choice') { kids(par.id).forEach(sib => { if (sib.id !== a.id) { delete o.sel[sib.id]; descIds(sib.id).forEach(d => delete o.sel[d]); } }); o.pick[par.id] = a.id; } } });
+  includeSubtree(o, id);
+}
+function excludeNode(o, id) { delete o.sel[id]; descIds(id).forEach(d => delete o.sel[d]); }
+
+function rowOf(o, kind, x, V) {
+  let name, unit, grp, parent = '', uc = {mat:0,cons:0,labor:0,cyc:false}, pill, pillLabel, src, missing = false, key = x.id, canOpen = false, refType = null, refId = null;
+  if (kind === 'stage') {
+    name = x.name; unit = x.unit; grp = path(x.id)[0]; parent = path(x.parentId).join(' › '); uc = cost('stage', x.id, V); pill = 'stage'; pillLabel = 'этап'; canOpen = true; refType = 'stage'; refId = x.id;
+    const ov = o.sel[x.id] && o.sel[x.id].q; src = ov !== undefined && ov !== '' ? ov : x.vol; missing = !String(src || '').trim();
+  } else if (x.type === 'custom') {
+    name = x.name; unit = x.unit; grp = 'Дополнительно'; pill = x.category; pillLabel = 'своя: ' + ({material:'материал',consumable:'расходник',labor:'работа'}[x.category]); src = x.qty;
+    uc[x.category === 'consumable' ? 'cons' : x.category === 'labor' ? 'labor' : 'mat'] = +x.price || 0;
+  } else {
+    const obj = getObj(x.type, x.refId); name = obj ? obj.name : '(удалено)'; unit = obj ? obj.unit : ''; grp = 'Дополнительно'; src = x.qty; refType = x.type; refId = x.refId; canOpen = true;
+    if (obj) uc = cost(x.type, x.refId, V); pill = x.type === 'material' && obj && obj.category === 'consumable' ? 'consumable' : x.type; pillLabel = {composite:'композит', material:'материал', consumable:'расходник'}[pill];
+  }
+  const q0 = missing ? 0 : evalExpr(src, V), bad = isNaN(q0), q = bad ? 0 : q0;
+  return {key, kind, x, name, unit, grp, parent, uc, pill, pillLabel, src, q, bad, missing, canOpen, refType, refId, cyc:uc.cyc,
+    mat:q*uc.mat, cons:q*uc.cons, labor:q*uc.labor, total:q*(uc.mat+uc.cons+uc.labor)};
+}
+function objRows(o) {
+  const V = objVars(o);
+  return includedNodes(o).filter(s => s.unit).map(s => rowOf(o, 'stage', s, V)).concat((o.extra || []).map(e => rowOf(o, 'extra', e, V)));
+}
+function totals(o, rows = objRows(o)) {
   const T = {mat:0, cons:0, labor:0, total:0, groups:new Map()};
-  for (const it of o.items) { const r = info(o, it); T.mat += r.mat; T.cons += r.cons; T.labor += r.labor; T.total += r.total;
-    T.groups.set(r.grp, (T.groups.get(r.grp) || 0) + r.total); }
+  for (const r of rows) { T.mat += r.mat; T.cons += r.cons; T.labor += r.labor; T.total += r.total; T.groups.set(r.grp, (T.groups.get(r.grp) || 0) + r.total); }
   return T;
 }
-function buyList(o) {
-  const acc = new Map(), extra = [];
-  for (const it of o.items) { const r = info(o, it);
-    if (it.type === 'custom') { if (it.category !== 'labor') extra.push({name:it.name, cat:it.category, unit:it.unit, qty:r.q, packQty:0, packs:0, exact:r.q*(+it.price||0), buy:r.q*(+it.price||0)}); continue; }
-    mats(it.type, it.refId, r.q, acc); }
+function buyList(o, rows = objRows(o)) {
+  const V = objVars(o), acc = new Map(), extra = [];
+  for (const r of rows) {
+    if (r.refType) mats(r.refType, r.refId, r.q, V, acc);
+    else if (r.x.category !== 'labor') extra.push({name:r.name, cat:r.x.category, unit:r.unit, qty:r.q, packQty:0, packs:0, exact:r.mat + r.cons, buy:r.mat + r.cons});
+  }
   const list = [];
   for (const [id, qty] of acc) { const m = byId(S.materials,id), pq = +m.packQty > 0 ? +m.packQty : 0, packs = pq ? Math.ceil(qty / pq - 1e-9) : 0;
     list.push({name:m.name, cat:m.category, unit:m.unit, qty, packQty:pq, packs, exact:qty*unitPrice(m), buy:packs*(+m.price||0)}); }
   list.sort((a,b) => (a.cat === b.cat ? a.name.localeCompare(b.name,'ru') : a.cat === 'material' ? -1 : 1));
   return list.concat(extra);
 }
-
-/* ================= MARKDOWN ================= */
-function inline(t) {
-  t = esc(t).replace(/!\[\[[^\]]*\]\]/g, '');
-  t = t.replace(/!\[([^\]]*)\]\((https?:[^)\s]+)\)/g, '<img alt="$1" src="$2">');
-  t = t.replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
-  t = t.replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (m, n, a) => { const s = S.stages.find(x => x.name.trim().toLowerCase() === n.trim().toLowerCase());
-    return s ? `<a href="#" class="wl" data-act="go-stage" data-id="${s.id}">${a || n}</a>` : `<span class="wl dead">${a || n}</span>`; });
-  t = t.replace(/`([^`]+)`/g, '<code>$1</code>').replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
-  t = t.replace(/(^|[\s(])\*(?!\s)(.+?)\*(?=[\s).,;:!?]|$)/g, '$1<i>$2</i>').replace(/(^|[\s(])_(?!\s)(.+?)_(?=[\s).,;:!?]|$)/g, '$1<i>$2</i>');
-  return t;
-}
-function md(src) {
-  let out = '', stack = [], para = [];
-  const flushP = () => { if (para.length) { out += '<p>' + inline(para.join(' ')) + '</p>'; para = []; } };
-  const closeAll = () => { while (stack.length) out += '</li></' + stack.pop().tag + '>'; };
-  for (const raw of String(src || '').replace(/\r/g,'').split('\n')) {
-    const line = raw.replace(/\t/g,'    '); let m;
-    if (!line.trim()) { flushP(); continue; }
-    if ((m = /^(\s*)([-*+]|\d+\.)\s+(.*)$/.exec(line))) {
-      flushP(); const w = m[1].length, tag = /\d/.test(m[2]) ? 'ol' : 'ul';
-      const txt = m[3].replace(/^\[( |x)\]\s+/i, (a, c) => c === ' ' ? '☐ ' : '☑ ');
-      while (stack.length && w < stack[stack.length-1].w) out += '</li></' + stack.pop().tag + '>';
-      const top = stack[stack.length-1];
-      if (!top || w > top.w) { out += '<' + tag + '><li>'; stack.push({w, tag}); } else out += '</li><li>';
-      out += inline(txt); continue;
-    }
-    if ((m = /^\s*(#{1,6})\s+(.*)$/.exec(line))) { flushP(); closeAll(); out += `<h${m[1].length}>${inline(m[2])}</h${m[1].length}>`; continue; }
-    if (/^\s*(-{3,}|\*{3,})\s*$/.test(line)) { flushP(); closeAll(); out += '<hr>'; continue; }
-    if (stack.length && /^\s+/.test(line)) { out += ' ' + inline(line.trim()); continue; }
-    flushP(); closeAll(); para.push(line.trim());
-  }
-  flushP(); closeAll(); return out;
+function toolsNeeded(o) {
+  const map = new Map();
+  for (const s of includedNodes(o)) for (const id of s.tools || []) { const t = byId(S.tools, id); if (t) { if (!map.has(id)) map.set(id, {t, where:[]}); map.get(id).where.push(s.name); } }
+  return [...map.values()].sort((a,b) => a.t.name.localeCompare(b.t.name,'ru'));
 }
 
 /* ================= ОБЩИЕ БЛОКИ ================= */
 function options(f) {
   let h = '<option value="">— выбрать —</option>';
   const grp = (label, arr, v, txt) => arr.length ? `<optgroup label="${label}">` + arr.map(x => `<option value="${v(x)}">${esc(txt(x))}</option>`).join('') + '</optgroup>' : '';
-  if (f.stages) h += grp('Этапы работ', S.stages.filter(s => s.unit), s => 'stage:'+s.id, s => path(s.id).join(' › ') + ' (' + s.unit + ')');
   if (f.composites) h += grp('Композиты', S.composites.filter(c => c.id !== f.exclude), c => 'composite:'+c.id, c => c.name + ' (' + c.unit + ')');
-  if (f.materials) {
-    h += grp('Материалы', S.materials.filter(m => m.category !== 'consumable'), m => 'material:'+m.id, m => m.name + ' (' + m.unit + ')');
-    h += grp('Расходники', S.materials.filter(m => m.category === 'consumable'), m => 'material:'+m.id, m => m.name + ' (' + m.unit + ')');
-  }
+  h += grp('Материалы', S.materials.filter(m => m.category !== 'consumable'), m => 'material:'+m.id, m => m.name + ' (' + m.unit + ')');
+  h += grp('Расходники', S.materials.filter(m => m.category === 'consumable'), m => 'material:'+m.id, m => m.name + ' (' + m.unit + ')');
   return h;
 }
 function compEditor(kind, o) {
+  const V = defVars();
   const rows = (o.components || []).map((c, i) => {
-    const it = getObj(c.refType, c.refId), cs = it ? cost(c.refType, c.refId) : {mat:0,cons:0,labor:0}, up = cs.mat + cs.cons + cs.labor, rv = rateVal(c);
+    const it = getObj(c.refType, c.refId), cs = it ? cost(c.refType, c.refId, V) : {mat:0,cons:0,labor:0}, up = cs.mat + cs.cons + cs.labor, rv = evalExpr(c.rate, V), bad = isNaN(rv);
     const pill = c.refType === 'composite' ? 'composite' : (it && it.category === 'consumable' ? 'consumable' : 'material');
     const plain = String(c.rate).trim() === String(rv);
     return `<tr><td><span class="pill ${pill}">${{composite:'композит',consumable:'расходник',material:'материал'}[pill]}</span>${esc(it ? it.name : '(удалено)')}</td>
-      <td style="white-space:nowrap"><input class="cell num" style="width:110px" data-act="set-comp" data-kind="${kind}" data-id="${o.id}" data-i="${i}" value="${esc(c.rate)}"> <span class="hint">${esc(it ? it.unit : '')}${plain ? '' : ' = ' + fmtQ(rv)}</span></td>
-      <td class="num">${fmt(up)} ₽</td><td class="num">${fmt(up*rv)} ₽</td>
+      <td style="white-space:nowrap"><input class="cell num" style="width:170px" data-act="set-comp" data-kind="${kind}" data-id="${o.id}" data-i="${i}" value="${esc(c.rate)}"> <span class="hint">${esc(it ? it.unit : '')}${bad ? ' <span class="warn">ошибка формулы</span>' : plain ? '' : ' = ' + fmtQ(rv)}</span></td>
+      <td class="num">${fmt(up)} ₽</td><td class="num">${fmt(up*(bad?0:rv))} ₽</td>
       <td><button class="btn sm ghost bad" data-act="del-comp" data-kind="${kind}" data-id="${o.id}" data-i="${i}">✕</button></td></tr>`;
   }).join('');
-  return `<div class="scroll">${rows ? `<table><thead><tr><th>Что входит</th><th>Расход на 1 ${esc(o.unit || 'ед.')}</th><th class="num">Цена/ед.</th><th class="num">Сумма</th><th></th></tr></thead><tbody>${rows}</tbody></table>` : '<div class="empty">Состав пуст — добавьте материалы ниже.</div>'}</div>
-    <div class="addrow"><div class="field"><label>Материал, расходник или композит</label><select class="sel" id="cs_${o.id}" style="min-width:240px">${options({materials:true, composites:true, exclude: kind==='composite'?o.id:''})}</select></div>
-      <div class="field"><label>Расход (число или формула)</label><input id="cr_${o.id}" class="w" placeholder="19*6*1.1"></div>
+  return `<div class="scroll">${rows ? `<table><thead><tr><th>Материал</th><th>Расход на 1 ${esc(o.unit || 'ед.')}</th><th class="num">Цена/ед.</th><th class="num">Сумма</th><th></th></tr></thead><tbody>${rows}</tbody></table>` : '<div class="empty">Материалы не указаны.</div>'}</div>
+    <div class="addrow"><div class="field"><label>Материал</label><select class="sel" id="cs_${o.id}" style="min-width:240px">${options({composites:true, exclude: kind==='composite'?o.id:''})}</select></div>
+      <div class="field"><label>Расход (число или формула)</label><input id="cr_${o.id}" class="w" style="width:180px" placeholder="19*thickness/10*1.1"></div>
       <button class="btn" data-act="add-comp" data-kind="${kind}" data-id="${o.id}">Добавить</button></div>`;
 }
 
 /* ================= ЭКРАНЫ ================= */
-const TABS = [['stages','Этапы работ'],['objects','Объекты'],['materials','Материалы'],['composites','Композиты'],['data','Данные']];
+const TABS = [['stages','Технологии'],['objects','Объекты'],['materials','Материалы'],['tools','Инструменты'],['composites','Композиты'],['data','Данные']];
 function render(fresh) {
-  const l = document.querySelector('.list'), d = document.querySelector('.detail') || document.querySelector('.page');
-  const sl = l ? l.scrollTop : 0, sd = d ? d.scrollTop : 0;
+  const l = document.querySelector('.list'), d = document.querySelector('.detail') || document.querySelector('.page'), pb = $('pickbox');
+  const sl = l ? l.scrollTop : 0, sd = d ? d.scrollTop : 0, sp = pb ? pb.scrollTop : 0;
   $('nav').innerHTML = TABS.map(([id,t]) => `<button class="tab ${ui.tab===id?'on':''}" data-act="tab" data-tab="${id}">${t}</button>`).join('');
-  $('main').innerHTML = {stages:viewStages, objects:viewObjects, materials:viewMaterials, composites:viewComposites, data:viewData}[ui.tab]();
-  const l2 = document.querySelector('.list'), d2 = document.querySelector('.detail') || document.querySelector('.page');
-  if (l2) l2.scrollTop = sl; if (d2 && !fresh) d2.scrollTop = sd;
-  document.querySelectorAll('textarea.notes').forEach(grow);
+  $('main').innerHTML = {stages:viewStages, objects:viewObjects, materials:viewMaterials, tools:viewTools, composites:viewComposites, data:viewData}[ui.tab]();
+  const l2 = document.querySelector('.list'), d2 = document.querySelector('.detail') || document.querySelector('.page'), p2 = $('pickbox');
+  if (l2) l2.scrollTop = sl; if (d2 && !fresh) d2.scrollTop = sd; if (p2 && !fresh) p2.scrollTop = sp;
 }
-const grow = t => { t.style.height = 'auto'; t.style.height = Math.max(200, t.scrollHeight + 4) + 'px'; };
 
-/* --- этапы --- */
+/* --- технологии: дерево + страница этапа --- */
 function matchTree(s, q) { return s.name.toLowerCase().includes(q) || kids(s.id).some(k => matchTree(k, q)); }
 function treeHtml(pid, d, q) {
   return kids(pid).filter(s => !q || matchTree(s, q)).map(s => {
     const has = kids(s.id).length > 0, closed = !q && ui.collapsed.has(s.id);
     return `<div class="trow ${ui.stageId===s.id?'on':''}" style="padding-left:${8 + d*16}px" data-act="sel-stage" data-id="${s.id}">
-      <span class="car" data-act="tgl-stage" data-id="${s.id}">${has ? (closed ? '▸' : '▾') : ''}</span><span class="tt">${esc(s.name)}</span>${s.unit ? `<span class="tu">${esc(s.unit)}</span>` : ''}</div>`
+      <span class="car" data-act="tgl-stage" data-id="${s.id}">${has ? (closed ? '▸' : '▾') : ''}</span><span class="tt">${esc(s.name)}${s.mode==='choice' && has ? '<span class="fork">⑂</span>' : ''}</span>${s.unit ? `<span class="tu">${esc(s.unit)}</span>` : ''}</div>`
       + (has && !closed ? treeHtml(s.id, d + 1, q) : '');
   }).join('');
 }
 function viewStages() {
   const s = byId(S.stages, ui.stageId);
   return `<div class="split ${s ? 'sel' : ''}"><aside class="list">
-    <div class="lh"><b>Все этапы</b><span><button class="ib" data-act="add-stage" data-pid="" title="Новый этап верхнего уровня">＋</button><button class="ib" data-act="collapse-all" title="Свернуть всё">⊟</button><button class="ib" data-act="expand-all" title="Развернуть всё">⊞</button></span></div>
-    <input class="search" data-live="tree-q" placeholder="Поиск по этапам…" value="${esc(ui.q)}">
-    <div id="treebox">${S.stages.length ? treeHtml('', 0, ui.q.toLowerCase()) : '<div class="empty">Этапов нет. Нажмите ＋ или загрузите заметки из Obsidian на вкладке «Данные».</div>'}</div></aside>
-    <section class="detail">${s ? stageDetail(s) : '<div class="ph">← Выберите этап. Здесь появятся его расчёт (работа и материалы на единицу) и заметки.</div>'}</section></div>`;
+    <div class="lh"><b>Технологии и этапы</b><span><button class="ib" data-act="add-stage" data-pid="" title="Новый раздел верхнего уровня">＋</button><button class="ib" data-act="collapse-all" title="Свернуть всё">⊟</button><button class="ib" data-act="expand-all" title="Развернуть всё">⊞</button></span></div>
+    <input class="search" data-live="tree-q" placeholder="Поиск…" value="${esc(ui.q)}">
+    <div id="treebox">${S.stages.length ? treeHtml('', 0, ui.q.toLowerCase()) : '<div class="empty">Пусто. Нажмите ＋ или импортируйте заметки на вкладке «Данные».</div>'}</div></aside>
+    <section class="detail">${s ? stageDetail(s) : '<div class="ph">← Выберите этап.<br><br>Этап — это узел дерева: раздел, технология, вариант или шаг. У шага задаются единица, цена работы, формула объёма, материалы с расходом и инструменты. Ветвление (⑂) — когда подэтапы это варианты на выбор.</div>'}</section></div>`;
 }
 function stageDetail(s) {
-  const c = cost('stage', s.id), a = anc(s.id), ch = kids(s.id), dset = descIds(s.id);
+  const V = defVars(), c = cost('stage', s.id, V), a = anc(s.id), ch = kids(s.id), dset = descIds(s.id);
   const bc = a.slice(0, -1).map(x => `<a href="#" data-act="go-stage" data-id="${x.id}">${esc(x.name)}</a>`).join(' / ');
   const pOpts = '<option value="">— верхний уровень —</option>' + S.stages.filter(x => x.id !== s.id && !dset.has(x.id)).map(x => `<option value="${x.id}" ${x.id === s.parentId ? 'selected' : ''}>${esc(path(x.id).join(' › '))}</option>`).join('');
-  const editing = ui.edit.has(s.id) || !s.notes;
-  return `<button class="btn ghost sm only-m" data-act="back-list">← К списку этапов</button>
+  const free = S.tools.filter(t => !(s.tools || []).includes(t.id)).sort((x,y) => x.name.localeCompare(y.name,'ru'));
+  const chips = (s.tools || []).map(id => byId(S.tools, id)).filter(Boolean).map(t => `<span class="chip">${esc(t.name)}<button data-act="del-stool" data-id="${s.id}" data-tool="${t.id}">✕</button></span>`).join('');
+  const notes = (s.notes || []).map((n, i) => `<div class="nrow"><select class="cell cat-${n.cat}" data-act="set-note" data-id="${s.id}" data-i="${i}" data-f="cat">${Object.entries(CATS).map(([k,v]) => `<option value="${k}" ${n.cat===k?'selected':''}>${v}</option>`).join('')}</select>
+    <input class="cell t" data-act="set-note" data-id="${s.id}" data-i="${i}" data-f="text" value="${esc(n.text)}"><button class="btn sm ghost bad" data-act="del-note" data-id="${s.id}" data-i="${i}">✕</button></div>`).join('');
+  return `<button class="btn ghost sm only-m" data-act="back-list">← К списку</button>
   <div class="crumbs">${bc || 'верхний уровень'}</div>
   <input class="namein" data-act="set-stage" data-id="${s.id}" data-f="name" value="${esc(s.name)}">
   <div class="bar"><button class="btn" data-act="add-stage" data-pid="${s.id}">＋ Подэтап</button>
     <button class="btn" data-act="mv-stage" data-id="${s.id}" data-dir="-1" title="Выше">↑</button><button class="btn" data-act="mv-stage" data-id="${s.id}" data-dir="1" title="Ниже">↓</button>
-    <select class="sel" data-act="set-parent" data-id="${s.id}" title="Перенести в другой раздел" style="max-width:260px">${pOpts}</select>
+    <select class="sel" data-act="set-parent" data-id="${s.id}" title="Перенести" style="max-width:260px">${pOpts}</select>
     <button class="btn bad" data-act="del-stage" data-id="${s.id}">Удалить</button></div>
 
-  <div class="card"><div class="ch"><h3>Расчёт на 1 единицу работы</h3><span class="hint">используется в сметах объектов</span></div>
-    <div class="cb"><div class="fields">
-      <div class="field"><label>Единица (м2, м, шт…)</label><input class="w" data-act="set-stage" data-id="${s.id}" data-f="unit" value="${esc(s.unit)}" placeholder="м2"></div>
-      <div class="field"><label>Стоимость работы, ₽ за ед.</label><input class="w num" data-act="set-stage" data-id="${s.id}" data-f="price" value="${s.price || ''}" placeholder="0"></div>
-      ${s.unit ? '' : '<span class="hint">Без единицы этап — просто раздел, в смету его добавить нельзя.</span>'}</div>
-      ${s.unit ? `<div class="kpi"><div><span>Работа</span><b>${fmt(c.labor)} ₽</b></div><div><span>Материалы</span><b>${fmt(c.mat)} ₽</b></div><div><span>Расходники</span><b>${fmt(c.cons)} ₽</b></div><div class="g"><span>Итого за 1 ${esc(s.unit)}</span><b>${fmt(c.mat + c.cons + c.labor)} ₽</b></div></div>` : ''}
-    </div>
-    ${s.unit ? compEditor('stage', s) : ''}</div>
+  <div class="card"><div class="ch"><h3>Работа и объём</h3><span class="hint">значения по умолчанию подставляются в объекты</span></div><div class="cb"><div class="fields">
+    <div class="field"><label>Единица (м2, м, шт)</label><input class="w" data-act="set-stage" data-id="${s.id}" data-f="unit" value="${esc(s.unit)}" placeholder="м2"></div>
+    <div class="field"><label>Цена работы, ₽ за ед.</label><input class="w num" data-act="set-stage" data-id="${s.id}" data-f="price" value="${s.price || ''}" placeholder="0"></div>
+    <div class="field"><label>Объём считать как (формула)</label><input style="width:200px" class="num" data-act="set-stage" data-id="${s.id}" data-f="vol" value="${esc(s.vol)}" placeholder="floor"></div>
+    <div class="field"><label>Подэтапы — это</label><select class="sel" data-act="set-mode" data-id="${s.id}"><option value="steps" ${s.mode!=='choice'?'selected':''}>шаги по порядку (все)</option><option value="choice" ${s.mode==='choice'?'selected':''}>варианты на выбор (один)</option></select></div></div>
+    <div class="hint" style="margin-top:8px">Переменные: ${S.params.map(p => `<b class="mono">${esc(p.key)}</b> — ${esc(p.label)}`).join(', ') || 'нет'}. Пример: <span class="mono">floor</span>, <span class="mono">walls*0.9</span>. Параметры настраиваются на вкладке «Данные».</div>
+    ${s.unit ? `<div class="kpi"><div><span>Работа за 1 ${esc(s.unit)}</span><b>${fmt(c.labor)} ₽</b></div><div><span>Материалы</span><b>${fmt(c.mat)} ₽</b></div><div><span>Расходники</span><b>${fmt(c.cons)} ₽</b></div><div class="g"><span>Итого за 1 ${esc(s.unit)}</span><b>${fmt(c.mat + c.cons + c.labor)} ₽</b></div></div><div class="hint" style="margin-top:6px">Расчёт при значениях параметров по умолчанию. В объекте подставятся его значения.</div>` : '<div class="hint" style="margin-top:8px">Без единицы этап — просто раздел или группа. Стоимость и материалы задаются у шагов с единицей.</div>'}</div></div>
 
-  <div class="card"><div class="ch"><h3>Заметки</h3>${s.notes ? `<button class="btn sm" data-act="tgl-edit" data-id="${s.id}">${ui.edit.has(s.id) ? 'Готово' : 'Править'}</button>` : ''}</div>
-    <div class="cb">${editing ? `<textarea class="notes" data-live="set-notes" data-id="${s.id}" placeholder="Инструмент, нормы расхода, технология, ошибки, приёмка… Поддерживается Markdown: ## заголовок, - список, **жирный**, [[ссылка на этап]]">${esc(s.notes)}</textarea>` : `<div class="md">${md(s.notes)}</div>`}</div></div>
+  ${s.unit ? `<div class="card"><div class="ch"><h3>Материалы на 1 ${esc(s.unit)}</h3><span class="hint">расход можно писать формулой с параметрами</span></div>${compEditor('stage', s)}</div>` : ''}
 
-  ${ch.length ? `<div class="card"><div class="ch"><h3>Подэтапы</h3></div><div class="kids">${ch.map(k => { const kc = cost('stage', k.id); return `<a href="#" data-act="go-stage" data-id="${k.id}"><span>${esc(k.name)}</span><span class="mono hint">${k.unit ? fmt(kc.mat + kc.cons + kc.labor) + ' ₽/' + esc(k.unit) : ''}</span></a>`; }).join('')}</div></div>` : ''}`;
+  <div class="card"><div class="ch"><h3>Инструменты</h3></div>${chips ? `<div class="chips">${chips}</div>` : '<div class="empty" style="padding:12px">Не указаны.</div>'}
+    <div class="addrow" style="border:0"><select class="sel" id="addTool" style="min-width:220px"><option value="">— добавить из справочника —</option>${free.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('')}</select>
+    <button class="btn" data-act="add-stool" data-id="${s.id}">Добавить</button><button class="btn ghost" data-act="new-stool" data-id="${s.id}">＋ новый инструмент</button></div></div>
+
+  <div class="card"><div class="ch"><h3>Условия, ошибки, приёмка</h3></div>${notes || '<div class="empty" style="padding:12px">Нет пунктов.</div>'}
+    <div class="addrow"><div class="field"><label>Тип</label><select class="sel" id="nCat">${Object.entries(CATS).map(([k,v]) => `<option value="${k}">${v}</option>`).join('')}</select></div>
+    <div class="field" style="flex:1"><label>Текст</label><input id="nText" style="width:100%" placeholder="Просвет под 2-метровым правилом ≤ 2 мм"></div><button class="btn" data-act="add-note" data-id="${s.id}">Добавить</button></div></div>
+
+  ${ch.length ? `<div class="card"><div class="ch"><h3>${s.mode === 'choice' ? 'Варианты (при применении выбирается один)' : 'Шаги по порядку'}</h3></div><div class="kids">${ch.map(k => { const kc = cost('stage', k.id, V); return `<a href="#" data-act="go-stage" data-id="${k.id}"><span>${esc(k.name)}${kids(k.id).length ? ` <span class="hint">· ${kids(k.id).length} шаг.</span>` : ''}</span><span class="mono hint">${k.unit ? fmt(kc.mat + kc.cons + kc.labor) + ' ₽/' + esc(k.unit) : ''}</span></a>`; }).join('')}</div></div>` : ''}`;
 }
 
 /* --- объекты --- */
 function viewObjects() {
   const o = byId(S.objects, ui.objId);
-  const list = S.objects.map(x => `<div class="orow ${x.id === ui.objId ? 'on' : ''}" data-act="sel-obj" data-id="${x.id}"><b>${esc(x.name)}</b><span>${fmt(totals(x).total)} ₽ · позиций: ${x.items.length}</span></div>`).join('');
+  const list = S.objects.map(x => `<div class="orow ${x.id === ui.objId ? 'on' : ''}" data-act="sel-obj" data-id="${x.id}"><b>${esc(x.name)}</b><span>${fmt(totals(x).total)} ₽</span></div>`).join('');
   return `<div class="split ${o ? 'sel' : ''}"><aside class="list"><div class="lh"><b>Объекты</b><button class="ib" data-act="add-obj" title="Новый объект">＋</button></div>
     <div class="olist">${list || '<div class="empty">Объектов нет. Нажмите ＋</div>'}</div></aside>
-    <section class="detail">${o ? objectDetail(o) : '<div class="ph">← Выберите объект или создайте новый (＋). Объект — это квартира, дом, помещение: параметры, нужные работы, смета и список материалов.</div>'}</section></div>`;
+    <section class="detail">${o ? objectDetail(o) : '<div class="ph">← Выберите объект или создайте новый (＋).<br><br>Объект — квартира, дом, помещение. Вы задаёте его параметры (площади, толщины) и отмечаете, какие этапы работ применяются. Материалы, количества и деньги считаются сами.</div>'}</section></div>`;
+}
+function pickHtml(o, pid, d, q) {
+  const parent = pid ? byId(S.stages, pid) : null, choice = parent && parent.mode === 'choice', V = objVars(o);
+  return kids(pid).filter(s => !q || matchTree(s, q)).map(s => {
+    const has = kids(s.id).length > 0, on = !!o.sel[s.id], open = !!q || ui.pexp.has(s.id);
+    const input = choice ? `<input type="radio" name="r_${pid}" ${o.pick[pid] === s.id && on ? 'checked' : ''} data-act="pick-variant" data-id="${s.id}">`
+      : `<input type="checkbox" ${on ? 'checked' : ''} data-act="pick-toggle" data-id="${s.id}">`;
+    let vol = '';
+    if (on && s.unit && !(parent && parent.mode === 'choice' && o.pick[pid] !== s.id)) { const r = rowOf(o, 'stage', s, V), ov = (o.sel[s.id] && o.sel[s.id].q) || '';
+      vol = `<span class="vol"><input class="cell mono" data-act="set-q" data-id="${s.id}" value="${esc(ov)}" placeholder="${esc(s.vol || 'объём')}" title="Объём: число или формула. Пусто — по умолчанию (${esc(s.vol)})"> <span class="eq">${r.bad ? '<span class="warn">ошибка</span>' : r.missing ? '<span class="warn">укажите объём</span>' : '= ' + fmtQ(r.q) + ' ' + esc(s.unit)}</span> <span class="mono">${fmt(r.total)} ₽</span></span>`; }
+    return `<div class="prow ${on ? 'on' : ''}" style="padding-left:${6 + d*18}px"><span class="car" data-act="tgl-pick" data-id="${s.id}" style="cursor:pointer">${has ? (open ? '▾' : '▸') : ''}</span>
+      <label>${input}<span>${esc(s.name)}${s.mode === 'choice' && has ? '<span class="fork">⑂ выбор варианта</span>' : ''}</span></label>${vol}</div>`
+      + (has && open ? pickHtml(o, s.id, d + 1, q) : '');
+  }).join('');
 }
 function objectDetail(o) {
-  const T = totals(o);
-  const prow = o.params.map(p => `<tr><td><input class="cell" style="width:100%" data-act="set-param" data-id="${p.id}" data-f="label" value="${esc(p.label)}"></td>
-    <td><input class="cell mono" style="width:120px" data-act="set-param" data-id="${p.id}" data-f="key" value="${esc(p.key)}"></td>
-    <td class="num"><input class="cell num" style="width:100px" data-act="set-param" data-id="${p.id}" data-f="value" value="${esc(p.value)}"></td>
-    <td><button class="btn sm ghost bad" data-act="del-param" data-id="${p.id}">✕</button></td></tr>`).join('');
-  const groups = new Map();
-  o.items.forEach(it => { const r = info(o, it); if (!groups.has(r.grp)) groups.set(r.grp, []); groups.get(r.grp).push({it, r}); });
-  let n = 0, irows = '';
+  const rows = objRows(o), T = totals(o, rows), bl = buyList(o, rows), buyTotal = bl.reduce((s, x) => s + x.buy, 0), tn = toolsNeeded(o);
+  const prm = S.params.map(p => `<div class="field"><label>${esc(p.label)}${p.unit ? ', ' + esc(p.unit) : ''} <span class="mono">${esc(p.key)}</span></label><input class="num w" data-act="set-value" data-key="${esc(p.key)}" value="${esc(o.values[p.key] !== undefined ? o.values[p.key] : p.def)}"></div>`).join('');
+  const groups = new Map(); rows.forEach(r => { if (!groups.has(r.grp)) groups.set(r.grp, []); groups.get(r.grp).push(r); });
+  let n = 0, srows = '';
   for (const [g, arr] of groups) {
-    irows += `<tr class="grp"><td colspan="10">${esc(g)}<span class="gs">${fmt(T.groups.get(g))} ₽</span></td></tr>`;
-    for (const {it, r} of arr) {
-      n++; const canOpen = it.type === 'stage' || it.type === 'composite', open = ui.rows.has(it.id); let bd = '';
-      if (canOpen && open) {
-        const ls = [...mats(it.type, it.refId, r.q)].map(([id, q]) => { const m = byId(S.materials, id);
+    srows += `<tr class="grp"><td colspan="9">${esc(g)}<span class="gs">${fmt(T.groups.get(g))} ₽</span></td></tr>`;
+    for (const r of arr) { n++; const open = ui.rows.has(r.key); let bd = '';
+      if (r.canOpen && open) {
+        const ls = [...mats(r.refType, r.refId, r.q, objVars(o))].map(([id, q]) => { const m = byId(S.materials, id);
           return `<tr><td>${esc(m.name)} <span class="pill ${m.category}">${m.category === 'consumable' ? 'расходник' : 'материал'}</span></td><td>${esc(m.unit)}</td><td class="num">${fmtQ(q)}</td><td class="num">${fmt(q * unitPrice(m))} ₽</td></tr>`; }).join('');
-        bd = `<tr><td></td><td colspan="9" style="padding:0"><div class="bd">${ls ? `<table><thead><tr><th>Материал</th><th>Ед.</th><th class="num">Нужно</th><th class="num">Стоимость</th></tr></thead><tbody>${ls}</tbody></table>` : '<span class="hint">Материалов в составе нет.</span>'}</div></td></tr>`;
-      }
-      irows += `<tr><td class="idx">${n}</td><td><span class="pill ${r.pill}">${esc(r.pillLabel)}</span>${esc(r.name)}${r.cyc ? ' <span class="warn">⚠ цикл</span>' : ''}
-        ${r.parent ? `<div class="path">${esc(r.parent)}</div>` : ''}${canOpen ? `<div><button class="tgl" data-act="tgl-row" data-id="${it.id}">${open ? '▾ скрыть материалы' : '▸ показать материалы'}</button></div>` : ''}</td>
-        <td>${esc(r.unit)}</td><td style="min-width:160px;white-space:nowrap"><input class="cell mono" style="width:100px" data-act="set-item" data-id="${it.id}" data-f="qty" value="${esc(it.qty)}"> <span class="eq">${r.bad ? '<span class="warn">ошибка</span>' : '= ' + fmtQ(r.q)}</span></td>
-        <td class="num">${fmt(r.uc.mat + r.uc.cons + r.uc.labor)}</td><td class="num">${fmt(r.mat)}</td><td class="num">${fmt(r.cons)}</td><td class="num">${fmt(r.labor)}</td>
-        <td class="num"><b>${fmt(r.total)}</b></td><td><button class="btn sm ghost bad" data-act="del-item" data-id="${it.id}">✕</button></td></tr>${bd}`;
-    }
+        bd = `<tr><td></td><td colspan="8" style="padding:0"><div class="bd">${ls ? `<table><thead><tr><th>Материал</th><th>Ед.</th><th class="num">Нужно</th><th class="num">Стоимость</th></tr></thead><tbody>${ls}</tbody></table>` : '<span class="hint">Материалов нет.</span>'}</div></td></tr>`; }
+      srows += `<tr><td class="idx">${n}</td><td><span class="pill ${r.pill}">${esc(r.pillLabel)}</span>${esc(r.name)}${r.cyc ? ' <span class="warn">⚠ цикл</span>' : ''}${r.missing ? ' <span class="warn">нет объёма</span>' : ''}${r.parent ? `<div class="path">${esc(r.parent)}</div>` : ''}
+        ${r.canOpen ? `<div><button class="tgl" data-act="tgl-row" data-id="${r.key}">${open ? '▾ скрыть материалы' : '▸ материалы'}</button></div>` : ''}</td>
+        <td class="num">${fmtQ(r.q)} ${esc(r.unit)}</td><td class="num">${fmt(r.uc.mat + r.uc.cons + r.uc.labor)}</td><td class="num">${fmt(r.mat)}</td><td class="num">${fmt(r.cons)}</td><td class="num">${fmt(r.labor)}</td><td class="num"><b>${fmt(r.total)}</b></td><td></td></tr>${bd}`; }
   }
-  const bl = buyList(o), buyTotal = bl.reduce((s, x) => s + x.buy, 0);
-  const brows = bl.map(x => `<tr><td>${esc(x.name)} <span class="pill ${x.cat}">${x.cat === 'consumable' ? 'расходник' : 'материал'}</span></td><td>${esc(x.unit)}</td><td class="num">${fmtQ(x.qty)}</td>
-    <td class="num">${x.packQty ? fmtQ(x.packQty) : '—'}</td><td class="num">${x.packQty ? '<b>' + x.packs + '</b>' : '—'}</td><td class="num">${fmt(x.exact)}</td><td class="num">${fmt(x.buy)}</td></tr>`).join('');
-  const keys = o.params.length ? 'Переменные: ' + o.params.map(p => `<b class="mono">${esc(p.key)}</b>`).join(', ') : 'Добавьте параметры выше, чтобы считать по формулам.';
-  const addForm = ui.custom ? `
-    <div class="field"><label>Название</label><input id="cuName" placeholder="Доставка"></div>
+  const erows = (o.extra || []).map((e, i) => { const r = rowOf(o, 'extra', e, objVars(o));
+    return `<tr><td><span class="pill ${r.pill}">${esc(r.pillLabel)}</span>${esc(r.name)}</td><td>${esc(r.unit)}</td><td style="white-space:nowrap"><input class="cell mono" style="width:90px" data-act="set-extra" data-i="${i}" value="${esc(e.qty)}"> <span class="eq">${r.bad ? '<span class="warn">ошибка</span>' : '= ' + fmtQ(r.q)}</span></td><td class="num">${fmt(r.total)}</td>
+      <td><button class="btn sm ghost bad" data-act="del-extra" data-i="${i}">✕</button></td></tr>`; }).join('');
+  const addForm = ui.custom ? `<div class="field"><label>Название</label><input id="cuName" placeholder="Доставка"></div>
     <div class="field"><label>Тип</label><select id="cuCat"><option value="material">материал</option><option value="consumable">расходник</option><option value="labor">работа</option></select></div>
     <div class="field"><label>Ед.</label><input id="cuUnit" class="w" placeholder="усл."></div><div class="field"><label>Кол-во</label><input id="cuQty" class="w" placeholder="1"></div>
-    <div class="field"><label>Цена/ед., ₽</label><input id="cuPrice" class="w"></div><button class="btn pri" data-act="add-custom">Добавить</button>` : `
-    <div class="field"><label>Что добавить в смету</label><select class="sel" id="addSel" style="min-width:300px">${options({stages:true, composites:true, materials:true})}</select></div>
-    <div class="field"><label>Объём (число или формула)</label><input id="addQty" placeholder="floor или 12.5"></div><button class="btn pri" data-act="add-item">Добавить в смету</button>`;
-  return `<button class="btn ghost sm only-m" data-act="back-list">← К списку объектов</button>
+    <div class="field"><label>Цена/ед., ₽</label><input id="cuPrice" class="w"></div><button class="btn" data-act="add-custom">Добавить</button>`
+    : `<div class="field"><label>Материал или композит</label><select class="sel" id="exSel" style="min-width:260px">${options({composites:true})}</select></div>
+    <div class="field"><label>Количество (число или формула)</label><input id="exQty" class="w" style="width:150px" placeholder="walls"></div><button class="btn" data-act="add-extra">Добавить</button>`;
+  return `<button class="btn ghost sm only-m" data-act="back-list">← К списку</button>
   <input class="namein" data-act="set-obj" data-f="name" value="${esc(o.name)}"><input class="namein sub" data-act="set-obj" data-f="note" placeholder="Адрес / заметка" value="${esc(o.note || '')}">
   <div class="bar"><button class="btn pri" data-act="export-xlsx">Экспорт в Excel</button><button class="btn bad" data-act="del-obj">Удалить объект</button></div>
 
-  <div class="card"><div class="ch"><h3>1. Параметры объекта</h3><span class="hint">ключ используется в формулах объёма</span></div>
-    ${o.params.length ? `<div class="scroll"><table><thead><tr><th>Название</th><th>Ключ</th><th class="num">Значение</th><th></th></tr></thead><tbody>${prow}</tbody></table></div>` : ''}
-    <div class="addrow"><div class="field"><label>Название</label><input id="pLabel" placeholder="Площадь потолка, м²"></div><div class="field"><label>Ключ (латиницей)</label><input id="pKey" class="w" placeholder="ceiling"></div>
-    <div class="field"><label>Значение</label><input id="pVal" class="w"></div><button class="btn" data-act="add-param">Добавить параметр</button></div></div>
+  <div class="card"><div class="ch"><h3>1. Параметры объекта</h3><button class="btn sm" data-act="add-param">＋ параметр</button></div><div class="cb"><div class="fields">${prm || '<span class="hint">Параметров нет.</span>'}</div></div></div>
 
-  <div class="card"><div class="ch"><h3>2. Работы в смете</h3><button class="btn sm" data-act="tgl-custom">${ui.custom ? '← из справочника' : 'своя позиция'}</button></div>
-    ${o.items.length ? `<div class="scroll"><table><thead><tr><th></th><th>Позиция</th><th>Ед.</th><th>Объём</th><th class="num">Цена/ед.</th><th class="num">Материалы</th><th class="num">Расходники</th><th class="num">Работа</th><th class="num">Сумма</th><th></th></tr></thead><tbody>${irows}</tbody></table></div>
+  <div class="card"><div class="ch"><h3>2. Какие работы выполняем</h3><input class="search" style="width:200px;margin:0" data-live="pick-q" placeholder="Поиск…" value="${esc(ui.pq)}"></div>
+    <div class="legend">Отметьте этапы. Для ветвления (⑂) выберите один вариант. Объём считается по формуле этапа из параметров, его можно переопределить в поле справа.</div>
+    <div class="pbox" id="pickbox">${pickHtml(o, '', 0, ui.pq.toLowerCase()) || '<div class="empty">Нет этапов. Создайте их на вкладке «Технологии».</div>'}</div></div>
+
+  <div class="card"><div class="ch"><h3>3. Смета</h3></div>
+    ${rows.length ? `<div class="scroll"><table><thead><tr><th></th><th>Этап / позиция</th><th class="num">Объём</th><th class="num">Цена/ед.</th><th class="num">Материалы</th><th class="num">Расходники</th><th class="num">Работа</th><th class="num">Сумма</th><th></th></tr></thead><tbody>${srows}</tbody></table></div>
     <div class="totals"><div><span>Материалы</span><b>${fmt(T.mat)} ₽</b></div><div><span>Расходники</span><b>${fmt(T.cons)} ₽</b></div><div><span>Работа</span><b>${fmt(T.labor)} ₽</b></div><div class="g"><span>Итого</span><b>${fmt(T.total)} ₽</b></div></div>`
-    : '<div class="empty">Позиций нет. Выберите этап работ ниже и укажите объём — материалы посчитаются сами.</div>'}
-    <div class="addrow">${addForm}</div><div class="hint" style="padding:0 16px 12px">Объём: число или формула, например <span class="mono">floor*1.1</span> или <span class="mono">(walls-5)/2</span>. ${keys}</div></div>
+    : '<div class="empty">Пока ничего не выбрано. Отметьте этапы выше.</div>'}
+    ${erows ? `<div class="ch" style="border-top:1px solid var(--line)"><h3>Дополнительные позиции</h3></div><div class="scroll"><table><tbody>${erows}</tbody></table></div>` : ''}
+    <div class="addrow"><b class="hint" style="align-self:center">Добавить вручную:</b>${addForm}<button class="btn ghost sm" data-act="tgl-custom">${ui.custom ? '← материал/композит' : 'своя позиция'}</button></div></div>
 
-  ${o.items.length ? `<div class="card"><div class="ch"><h3>3. Материалы к закупке</h3><span class="hint">упаковки округляются вверх</span></div><div class="scroll"><table><thead><tr><th>Материал</th><th>Ед.</th><th class="num">Нужно</th><th class="num">В упак.</th><th class="num">Упаковок</th><th class="num">По факту, ₽</th><th class="num">К закупке, ₽</th></tr></thead><tbody>${brows || '<tr><td colspan="7" class="hint">Материалов нет</td></tr>'}</tbody></table></div>
-    <div class="totals"><div class="g"><span>Закупка (целые упаковки)</span><b>${fmt(buyTotal)} ₽</b></div></div></div>` : ''}`;
+  ${rows.length ? `<div class="card"><div class="ch"><h3>4. Материалы к закупке</h3><span class="hint">упаковки округляются вверх</span></div><div class="scroll"><table><thead><tr><th>Материал</th><th>Ед.</th><th class="num">Нужно</th><th class="num">В упак.</th><th class="num">Упаковок</th><th class="num">По факту, ₽</th><th class="num">К закупке, ₽</th></tr></thead><tbody>${bl.map(x => `<tr><td>${esc(x.name)} <span class="pill ${x.cat}">${x.cat === 'consumable' ? 'расходник' : 'материал'}</span></td><td>${esc(x.unit)}</td><td class="num">${fmtQ(x.qty)}</td><td class="num">${x.packQty ? fmtQ(x.packQty) : '—'}</td><td class="num">${x.packQty ? '<b>' + x.packs + '</b>' : '—'}</td><td class="num">${fmt(x.exact)}</td><td class="num">${fmt(x.buy)}</td></tr>`).join('') || '<tr><td colspan="7" class="hint">Материалов нет</td></tr>'}</tbody></table></div>
+    <div class="totals"><div class="g"><span>Закупка (целые упаковки)</span><b>${fmt(buyTotal)} ₽</b></div></div></div>
+  <div class="card"><div class="ch"><h3>5. Нужные инструменты</h3></div>${tn.length ? `<div class="scroll"><table><tbody>${tn.map(x => `<tr><td>${esc(x.t.name)}</td><td class="hint">${esc(x.where.join('; '))}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">В выбранных этапах инструменты не указаны.</div>'}</div>` : ''}`;
 }
 
-/* --- материалы / композиты / данные --- */
+/* --- материалы / инструменты / композиты / данные --- */
 function viewMaterials() {
   const rows = S.materials.map((m,i) => `<tr><td class="idx">${i+1}</td>
     <td><input class="cell" style="width:100%;min-width:180px" data-act="set-mat" data-id="${m.id}" data-f="name" value="${esc(m.name)}"></td>
@@ -351,70 +394,88 @@ function viewMaterials() {
     <td class="num"><input class="cell num" style="width:100px" data-act="set-mat" data-id="${m.id}" data-f="price" value="${m.price}"></td>
     <td class="num"><input class="cell num" style="width:80px" data-act="set-mat" data-id="${m.id}" data-f="packQty" value="${m.packQty}"></td>
     <td class="num">${fmt(unitPrice(m))} ₽</td><td><button class="btn sm ghost bad" data-act="del-mat" data-id="${m.id}">✕</button></td></tr>`).join('');
-  return `<div class="page"><h2 style="margin-top:0">Материалы и расходники</h2><p class="hint">Цена за упаковку ÷ количество в упаковке = цена за единицу. Расходники (саморезы, диски, перчатки) в смете идут отдельной колонкой.</p>
+  return `<div class="page"><h2 style="margin-top:0">Материалы и расходники</h2><p class="hint">Конкретный материал: цена за упаковку ÷ количество в упаковке = цена за единицу. Расходники (саморезы, диски) в смете идут отдельной колонкой.</p>
   <div class="card">${rows ? `<div class="scroll"><table><thead><tr><th></th><th>Название</th><th>Тип</th><th>Ед.</th><th class="num">Цена упак., ₽</th><th class="num">В упак.</th><th class="num">Цена/ед.</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>` : '<div class="empty">Пусто.</div>'}
   <div class="addrow"><div class="field"><label>Название</label><input id="mName" placeholder="Цемент М500"></div>
   <div class="field"><label>Тип</label><select id="mCat"><option value="material">материал</option><option value="consumable">расходник</option></select></div>
   <div class="field"><label>Ед.</label><input id="mUnit" class="w" placeholder="кг"></div><div class="field"><label>Цена упак., ₽</label><input id="mPrice" class="w"></div>
   <div class="field"><label>В упаковке</label><input id="mQty" class="w" placeholder="50"></div><button class="btn pri" data-act="add-mat">Добавить</button></div></div></div>`;
 }
+function viewTools() {
+  const used = id => S.stages.filter(s => (s.tools || []).includes(id)).length;
+  const rows = S.tools.map((t,i) => `<tr><td class="idx">${i+1}</td><td><input class="cell" style="width:100%;min-width:200px" data-act="set-tool" data-id="${t.id}" data-f="name" value="${esc(t.name)}"></td>
+    <td><input class="cell" style="width:100%;min-width:200px" data-act="set-tool" data-id="${t.id}" data-f="note" value="${esc(t.note)}" placeholder="Заметка, где взять, аренда…"></td><td class="num">${used(t.id)}</td>
+    <td><button class="btn sm ghost bad" data-act="del-tool" data-id="${t.id}">✕</button></td></tr>`).join('');
+  return `<div class="page"><h2 style="margin-top:0">Инструменты</h2><p class="hint">Справочник инструментов. Привязываются к этапам на вкладке «Технологии», в объекте собираются в список нужных.</p>
+  <div class="card">${rows ? `<div class="scroll"><table><thead><tr><th></th><th>Название</th><th>Заметка</th><th class="num">В этапах</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>` : '<div class="empty">Пусто.</div>'}
+  <div class="addrow"><div class="field"><label>Название</label><input id="tName" placeholder="Лазерный нивелир"></div><button class="btn pri" data-act="add-tool">Добавить</button></div></div></div>`;
+}
 function viewComposites() {
   const cards = S.composites.map(c => { const k = cost('composite', c.id);
     return `<div class="card"><div class="ch"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><input class="cell" style="font-weight:700;width:260px" data-act="set-composite" data-id="${c.id}" data-f="name" value="${esc(c.name)}"><span class="hint">на 1</span>
       <input class="cell" style="width:64px" data-act="set-composite" data-id="${c.id}" data-f="unit" value="${esc(c.unit)}"></div>
       <div><b class="mono">${fmt(k.mat + k.cons)} ₽</b> / ед. ${k.cyc ? '<span class="warn">⚠ цикл</span>' : ''} <button class="btn sm ghost bad" data-act="del-composite" data-id="${c.id}">Удалить</button></div></div>${compEditor('composite', c)}</div>`; }).join('');
-  return `<div class="page"><h2 style="margin-top:0">Композиты</h2><p class="hint">Смеси и сборки из материалов и других композитов (раствор, штукатурный слой). Их можно подключать к этапам как один компонент.</p>
+  return `<div class="page"><h2 style="margin-top:0">Композиты</h2><p class="hint">Необязательно: сборка из материалов (раствор, штукатурный слой) как один компонент для норм этапов.</p>
   ${cards || '<div class="card"><div class="empty">Композитов нет.</div></div>'}
   <div class="card"><div class="addrow" style="border:0"><div class="field"><label>Название</label><input id="kName" placeholder="Штукатурный раствор"></div>
   <div class="field"><label>Ед. результата</label><input id="kUnit" class="w" placeholder="м2"></div><button class="btn pri" data-act="add-composite">Создать</button></div></div></div>`;
 }
 function viewData() {
+  const prow = S.params.map(p => `<tr><td><input class="cell" style="width:100%" data-act="set-pdef" data-id="${p.id}" data-f="label" value="${esc(p.label)}"></td>
+    <td><input class="cell mono" style="width:120px" data-act="set-pdef" data-id="${p.id}" data-f="key" value="${esc(p.key)}"></td><td><input class="cell" style="width:60px" data-act="set-pdef" data-id="${p.id}" data-f="unit" value="${esc(p.unit)}"></td>
+    <td class="num"><input class="cell num" style="width:90px" data-act="set-pdef" data-id="${p.id}" data-f="def" value="${esc(p.def)}"></td><td><button class="btn sm ghost bad" data-act="del-pdef" data-id="${p.id}">✕</button></td></tr>`).join('');
   return `<div class="page"><h2 style="margin-top:0">Данные</h2>
-  <div class="card"><div class="ch"><h3>Импорт заметок из Obsidian</h3></div><div class="cb"><p class="hint" style="margin-top:0">Выберите .md-файлы из папки хранилища (можно много сразу, Ctrl+A в окне выбора). Каждый файл станет этапом, текст — его заметкой. Вложенность берётся из номера в названии файла: «2.5.6. Стяжка» попадёт внутрь «2.5.», а «2.5.» внутрь «2.». Файлы без номера попадут на верхний уровень, потом их можно перенести. Этап с таким же названием обновится.</p>
+  <div class="card"><div class="ch"><h3>Параметры расчёта</h3><button class="btn sm" data-act="add-pdef">＋ параметр</button></div><div class="cb"><p class="hint" style="margin-top:0">Общий список параметров. У каждого объекта свои значения. Ключ используется в формулах объёма и расхода (floor, walls, thickness…).</p></div>
+    <div class="scroll"><table><thead><tr><th>Название</th><th>Ключ</th><th>Ед.</th><th class="num">По умолчанию</th><th></th></tr></thead><tbody>${prow}</tbody></table></div></div>
+  <div class="card"><div class="ch"><h3>Импорт заметок из Obsidian</h3></div><div class="cb"><p class="hint" style="margin-top:0">Выберите .md-файлы хранилища. Каждый файл станет этапом (вложенность по номеру в названии: «2.5.6. …» попадёт в «2.5.»). Содержимое разбирается в пункты «Условие / Ошибка / Приёмка / Заметка», а перечисленные инструменты — в справочник и привязку к этапу. Материалы, цены и объёмы вы задаёте сами.</p>
   <button class="btn pri" data-act="import-md">Выбрать .md файлы…</button></div></div>
-  <div class="card"><div class="ch"><h3>Резервная копия</h3></div><div class="cb"><p class="hint" style="margin-top:0">Всё хранится в этом браузере. Очистка данных браузера всё сотрёт, поэтому иногда скачивайте копию.</p>
+  <div class="card"><div class="ch"><h3>Резервная копия</h3></div><div class="cb"><p class="hint" style="margin-top:0">Всё хранится в этом браузере. Очистка данных браузера всё сотрёт — иногда скачивайте копию.</p>
   <button class="btn pri" data-act="export-json">Скачать копию (JSON)</button> <button class="btn" data-act="import-json">Загрузить из файла</button> <button class="btn bad" data-act="reset">Сбросить к примеру</button></div></div></div>`;
 }
 
 /* ================= ЭКСПОРТ / ИМПОРТ ================= */
 function exportXlsx(o) {
   if (!window.XLSX) return alert('Библиотека Excel не загрузилась — нужен интернет.');
-  const T = totals(o), a = [[o.name],[o.note||''],[],['№','Этап','Позиция','Ед.','Кол-во','Цена/ед., ₽','Материалы, ₽','Расходники, ₽','Работа, ₽','Сумма, ₽']];
-  o.items.forEach((it,i) => { const r = info(o,it); a.push([i+1, r.parent || r.grp, r.name, r.unit, n2(r.q), n2(r.uc.mat+r.uc.cons+r.uc.labor), n2(r.mat), n2(r.cons), n2(r.labor), n2(r.total)]); });
+  const rows = objRows(o), T = totals(o, rows), bl = buyList(o, rows);
+  const a = [[o.name],[o.note||''],[],['№','Раздел','Этап / позиция','Ед.','Объём','Цена/ед., ₽','Материалы, ₽','Расходники, ₽','Работа, ₽','Сумма, ₽']];
+  rows.forEach((r,i) => a.push([i+1, r.grp, r.name, r.unit, n2(r.q), n2(r.uc.mat+r.uc.cons+r.uc.labor), n2(r.mat), n2(r.cons), n2(r.labor), n2(r.total)]));
   a.push([], ['','','ИТОГО','','','',n2(T.mat),n2(T.cons),n2(T.labor),n2(T.total)]);
-  const s1 = XLSX.utils.aoa_to_sheet(a); s1['!cols'] = [4,34,36,7,10,12,14,14,12,14].map(w => ({wch:w}));
-  const bl = buyList(o), b = [['Материал','Тип','Ед.','Нужно','В упак.','Упаковок','По факту, ₽','К закупке, ₽']];
+  const s1 = XLSX.utils.aoa_to_sheet(a); s1['!cols'] = [4,30,50,7,10,12,14,14,12,14].map(w => ({wch:w}));
+  const b = [['Материал','Тип','Ед.','Нужно','В упак.','Упаковок','По факту, ₽','К закупке, ₽']];
   bl.forEach(x => b.push([x.name, x.cat==='consumable'?'расходник':'материал', x.unit, n2(x.qty), x.packQty||'', x.packs||'', n2(x.exact), n2(x.buy)]));
   b.push([], ['ИТОГО','','','','','',n2(bl.reduce((s,x)=>s+x.exact,0)),n2(bl.reduce((s,x)=>s+x.buy,0))]);
-  const s2 = XLSX.utils.aoa_to_sheet(b); s2['!cols'] = [32,12,7,10,9,10,14,14].map(w => ({wch:w}));
-  const s3 = XLSX.utils.aoa_to_sheet([['Параметр','Ключ','Значение']].concat(o.params.map(x => [x.label, x.key, num(x.value)]))); s3['!cols'] = [30,14,12].map(w => ({wch:w}));
-  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, s1, 'Смета'); XLSX.utils.book_append_sheet(wb, s2, 'Материалы'); XLSX.utils.book_append_sheet(wb, s3, 'Параметры');
+  const s2 = XLSX.utils.aoa_to_sheet(b); s2['!cols'] = [34,12,7,10,9,10,14,14].map(w => ({wch:w}));
+  const s3 = XLSX.utils.aoa_to_sheet([['Инструмент','Где нужен']].concat(toolsNeeded(o).map(x => [x.t.name, x.where.join('; ')]))); s3['!cols'] = [36,70].map(w => ({wch:w}));
+  const s4 = XLSX.utils.aoa_to_sheet([['Параметр','Ключ','Значение','Ед.']].concat(S.params.map(p => [p.label, p.key, num(o.values[p.key] !== undefined ? o.values[p.key] : p.def), p.unit]))); s4['!cols'] = [30,14,12,8].map(w => ({wch:w}));
+  const wb = XLSX.utils.book_new(); [['Смета',s1],['Материалы',s2],['Инструменты',s3],['Параметры',s4]].forEach(([n,s]) => XLSX.utils.book_append_sheet(wb, s, n));
   XLSX.writeFile(wb, 'smeta_' + (o.name || 'object').replace(/[^\p{L}\d]+/gu,'_') + '.xlsx');
 }
 function download(name, text) { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], {type:'application/json'})); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000); }
 const codeOf = n => { const m = /^(\d+(?:\.\d+)*)\.?(?:\s|$)/.exec(String(n).trim()); return m ? m[1] : ''; };
 async function importMd(files) {
   const items = [];
-  for (const f of files) { const t = (await f.text()).replace(/^\uFEFF/, '').replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, '').trim(); items.push({name:f.name.replace(/\.md$/i,'').trim(), text:t}); }
+  for (const f of files) { const t = (await f.text()).replace(/^\uFEFF/, '').replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, ''); items.push({name:f.name.replace(/\.md$/i,'').trim(), text:t}); }
   const cmp = (a, b) => { const x = codeOf(a.name), y = codeOf(b.name); if (x && !y) return -1; if (!x && y) return 1; if (!x && !y) return a.name.localeCompare(b.name,'ru');
     const p = x.split('.').map(Number), q = y.split('.').map(Number); for (let i = 0; i < Math.max(p.length, q.length); i++) { const d = (p[i] ?? -1) - (q[i] ?? -1); if (d) return d; } return 0; };
   items.sort(cmp); let added = 0, upd = 0;
   for (const it of items) {
-    const ex = S.stages.find(s => s.name === it.name);
-    if (ex) { ex.notes = it.text; upd++; continue; }
+    const pn = parseNote(it.text), tids = pn.tools.map(n => getTool(n).id); let st = S.stages.find(s => s.name === it.name);
+    if (st) { st.notes = pn.items; st.tools = [...new Set((st.tools || []).concat(tids))]; upd++; continue; }
     let parentId = ''; const parts = codeOf(it.name).split('.').filter(Boolean);
     for (let k = parts.length - 1; k >= 1 && !parentId; k--) { const pc = parts.slice(0, k).join('.'), p = S.stages.find(s => codeOf(s.name) === pc); if (p) parentId = p.id; }
-    S.stages.push({id:uid(), parentId, name:it.name, unit:'', price:0, notes:it.text, components:[]}); added++;
+    S.stages.push({id:uid(), parentId, name:it.name, mode:'steps', unit:'', price:0, vol:'', components:[], tools:[...new Set(tids)], notes:pn.items}); added++;
   }
-  ui.tab = 'stages'; commit(); alert(`Готово: добавлено этапов — ${added}, обновлено — ${upd}.`);
+  ui.tab = 'stages'; commit(); alert(`Готово: добавлено этапов — ${added}, обновлено — ${upd}. Инструментов в справочнике: ${S.tools.length}.`);
 }
 
 /* ================= ДЕЙСТВИЯ ================= */
 const curObj = () => byId(S.objects, ui.objId);
 const cleanKey = k => k.replace(/[^\p{L}\d_]/gu,'_').replace(/^(\d)/,'_$1');
 const compOwner = el => el.dataset.kind === 'stage' ? byId(S.stages, el.dataset.id) : byId(S.composites, el.dataset.id);
-function removeStage(id) { kids(id).forEach(k => removeStage(k.id)); S.stages = S.stages.filter(s => s.id !== id); }
+function removeStage(id) { const ids = new Set([id, ...descIds(id)]); S.stages = S.stages.filter(s => !ids.has(s.id)); S.objects.forEach(o => ids.forEach(i => { delete o.sel[i]; })); }
 const selectStage = id => { ui.tab = 'stages'; ui.stageId = id; anc(id).slice(0,-1).forEach(a => ui.collapsed.delete(a.id)); render(true); };
+function newParam() { const l = prompt('Название параметра (например, Площадь потолка):'); if (!l || !l.trim()) return; const k = cleanKey((prompt('Ключ латиницей (например, ceiling):') || '').trim()); if (!k) return;
+  if (S.params.some(p => p.key === k)) return alert('Такой ключ уже есть.'); S.params.push({id:uid(), key:k, label:l.trim(), unit:(prompt('Единица (м², м, мм):') || '').trim(), def:0}); commit(); }
 
 const H = {
   tab: el => { ui.tab = el.dataset.tab; render(true); },
@@ -425,43 +486,54 @@ const H = {
   'collapse-all': () => { S.stages.forEach(s => kids(s.id).length && ui.collapsed.add(s.id)); render(); },
   'expand-all': () => { ui.collapsed.clear(); render(); },
   'add-stage': el => { const pid = el.dataset.pid, n = prompt('Название этапа:'); if (!n || !n.trim()) return;
-    const s = {id:uid(), parentId:pid, name:n.trim(), unit:'', price:0, notes:'', components:[]}; S.stages.push(s); save(); selectStage(s.id); },
+    const s = {id:uid(), parentId:pid, name:n.trim(), mode:'steps', unit:'', price:0, vol:'', components:[], tools:[], notes:[]}; S.stages.push(s); save(); selectStage(s.id); },
   'set-stage': el => { const s = byId(S.stages, el.dataset.id), f = el.dataset.f; s[f] = f === 'price' ? num(el.value) : el.value.trim(); commit(); },
+  'set-mode': el => { byId(S.stages, el.dataset.id).mode = el.value; commit(); },
   'set-parent': el => { const s = byId(S.stages, el.dataset.id); s.parentId = el.value; S.stages.push(S.stages.splice(S.stages.indexOf(s), 1)[0]); if (el.value) ui.collapsed.delete(el.value); commit(); },
   'del-stage': el => { const s = byId(S.stages, el.dataset.id); if (!confirm(`Удалить «${s.name}» вместе с вложенными этапами?`)) return; ui.stageId = s.parentId || null; removeStage(s.id); commit(); },
   'mv-stage': el => { const s = byId(S.stages, el.dataset.id), sib = kids(s.parentId), i = sib.indexOf(s), j = i + +el.dataset.dir;
     if (j < 0 || j >= sib.length) return; const a = S.stages.indexOf(s), b = S.stages.indexOf(sib[j]); [S.stages[a], S.stages[b]] = [S.stages[b], S.stages[a]]; commit(); },
-  'tgl-edit': el => { const id = el.dataset.id; ui.edit.has(id) ? ui.edit.delete(id) : ui.edit.add(id); render(); },
-
-  'add-comp': el => { const o = compOwner(el), v = val('cs_' + o.id); if (!v) return; const [refType, refId] = v.split(':');
-    o.components.push({refType, refId, rate: val('cr_' + o.id) || '1'}); commit(); },
+  'add-stool': el => { const t = val('addTool'); if (!t) return; const s = byId(S.stages, el.dataset.id); s.tools.push(t); commit(); },
+  'new-stool': el => { const n = prompt('Название инструмента:'); if (!n || !n.trim()) return; const s = byId(S.stages, el.dataset.id), t = getTool(n.trim()); if (!s.tools.includes(t.id)) s.tools.push(t.id); commit(); },
+  'del-stool': el => { const s = byId(S.stages, el.dataset.id); s.tools = s.tools.filter(t => t !== el.dataset.tool); commit(); },
+  'add-note': el => { const t = val('nText'); if (!t) return; byId(S.stages, el.dataset.id).notes.push({id:uid(), cat:val('nCat'), text:t}); commit(); },
+  'set-note': el => { byId(S.stages, el.dataset.id).notes[+el.dataset.i][el.dataset.f] = el.value.trim(); commit(); },
+  'del-note': el => { byId(S.stages, el.dataset.id).notes.splice(+el.dataset.i, 1); commit(); },
+  'add-comp': el => { const o = compOwner(el), v = val('cs_' + o.id); if (!v) return; const [refType, refId] = v.split(':'); o.components.push({refType, refId, rate: val('cr_' + o.id) || '1'}); commit(); },
   'set-comp': el => { compOwner(el).components[+el.dataset.i].rate = el.value.trim() || '0'; commit(); },
   'del-comp': el => { compOwner(el).components.splice(+el.dataset.i, 1); commit(); },
 
-  'sel-obj': el => { ui.objId = el.dataset.id; render(true); },
-  'add-obj': () => { const n = prompt('Название объекта:'); if (!n || !n.trim()) return; const P = (label, key) => ({id:uid(), label, key, value:0});
-    const o = {id:uid(), name:n.trim(), note:'', params:[P('Площадь пола, м²','floor'),P('Площадь стен, м²','walls'),P('Периметр, м','perimeter')], items:[]};
+  'sel-obj': el => { ui.objId = el.dataset.id; Object.keys(curObj().sel).forEach(id => ui.pexp.add(id)); render(true); },
+  'add-obj': () => { const n = prompt('Название объекта:'); if (!n || !n.trim()) return; const o = {id:uid(), name:n.trim(), note:'', values:{}, sel:{}, pick:{}, extra:[]};
     S.objects.push(o); ui.objId = o.id; save(); render(true); },
   'del-obj': () => { if (confirm('Удалить объект целиком?')) { S.objects = S.objects.filter(o => o.id !== ui.objId); ui.objId = null; commit(); } },
   'set-obj': el => { curObj()[el.dataset.f] = el.value; commit(); },
-  'add-param': () => { const l = val('pLabel'), k = cleanKey(val('pKey')); if (!l || !k) return alert('Нужны название и ключ (латиницей, например ceiling).');
-    const o = curObj(); if (o.params.some(p => p.key === k)) return alert('Такой ключ уже есть.'); o.params.push({id:uid(), label:l, key:k, value:num(val('pVal'))}); commit(); },
-  'set-param': el => { const p = byId(curObj().params, el.dataset.id), f = el.dataset.f; p[f] = f === 'key' ? cleanKey(el.value) : el.value; commit(); },
-  'del-param': el => { const o = curObj(); o.params = o.params.filter(p => p.id !== el.dataset.id); commit(); },
+  'set-value': el => { curObj().values[el.dataset.key] = el.value.trim(); commit(); },
+  'add-param': newParam,
+  'tgl-pick': el => { const id = el.dataset.id; ui.pexp.has(id) ? ui.pexp.delete(id) : ui.pexp.add(id); render(); },
+  'pick-toggle': el => { const o = curObj(); el.checked ? includeNode(o, el.dataset.id) : excludeNode(o, el.dataset.id); commit(); },
+  'pick-variant': el => { includeNode(curObj(), el.dataset.id); commit(); },
+  'set-q': el => { const o = curObj(); o.sel[el.dataset.id] = o.sel[el.dataset.id] || {}; o.sel[el.dataset.id].q = el.value.trim(); commit(); },
   'tgl-custom': () => { ui.custom = !ui.custom; render(); },
-  'add-item': () => { const v = val('addSel'); if (!v) return; const [type, refId] = v.split(':'); curObj().items.push({id:uid(), type, refId, qty: val('addQty') || '1'}); commit(); },
-  'add-custom': () => { const n = val('cuName'); if (!n) return; curObj().items.push({id:uid(), type:'custom', name:n, category:val('cuCat'), unit:val('cuUnit'), qty:val('cuQty') || '1', price:num(val('cuPrice'))}); commit(); },
-  'set-item': el => { byId(curObj().items, el.dataset.id)[el.dataset.f] = el.value.trim(); commit(); },
-  'del-item': el => { const o = curObj(); o.items = o.items.filter(i => i.id !== el.dataset.id); commit(); },
+  'add-extra': () => { const v = val('exSel'); if (!v) return; const [type, refId] = v.split(':'); curObj().extra.push({id:uid(), type, refId, qty:val('exQty') || '1'}); commit(); },
+  'add-custom': () => { const n = val('cuName'); if (!n) return; curObj().extra.push({id:uid(), type:'custom', name:n, category:val('cuCat'), unit:val('cuUnit'), qty:val('cuQty') || '1', price:num(val('cuPrice'))}); commit(); },
+  'set-extra': el => { curObj().extra[+el.dataset.i].qty = el.value.trim(); commit(); },
+  'del-extra': el => { curObj().extra.splice(+el.dataset.i, 1); commit(); },
   'tgl-row': el => { const id = el.dataset.id; ui.rows.has(id) ? ui.rows.delete(id) : ui.rows.add(id); render(); },
   'export-xlsx': () => exportXlsx(curObj()),
 
   'add-mat': () => { const n = val('mName'); if (!n) return; S.materials.push({id:uid(), name:n, category:val('mCat'), unit:val('mUnit'), price:num(val('mPrice')), packQty:num(val('mQty')) || 1}); commit(); },
   'set-mat': el => { const m = byId(S.materials, el.dataset.id), f = el.dataset.f; m[f] = (f === 'price' || f === 'packQty') ? num(el.value) : el.value.trim(); commit(); },
   'del-mat': el => { if (confirm('Удалить материал?')) { S.materials = S.materials.filter(m => m.id !== el.dataset.id); commit(); } },
+  'add-tool': () => { const n = val('tName'); if (!n) return; getTool(n); commit(); },
+  'set-tool': el => { byId(S.tools, el.dataset.id)[el.dataset.f] = el.value.trim(); commit(); },
+  'del-tool': el => { if (!confirm('Удалить инструмент?')) return; const id = el.dataset.id; S.tools = S.tools.filter(t => t.id !== id); S.stages.forEach(s => s.tools = s.tools.filter(t => t !== id)); commit(); },
   'add-composite': () => { const n = val('kName'); if (!n) return; S.composites.push({id:uid(), name:n, unit:val('kUnit') || 'м2', components:[]}); commit(); },
   'set-composite': el => { byId(S.composites, el.dataset.id)[el.dataset.f] = el.value.trim(); commit(); },
   'del-composite': el => { if (confirm('Удалить композит?')) { S.composites = S.composites.filter(c => c.id !== el.dataset.id); commit(); } },
+  'add-pdef': newParam,
+  'set-pdef': el => { const p = byId(S.params, el.dataset.id), f = el.dataset.f; p[f] = f === 'key' ? (cleanKey(el.value) || p.key) : f === 'def' ? num(el.value) : el.value.trim(); commit(); },
+  'del-pdef': el => { if (confirm('Удалить параметр? Формулы с ним перестанут считаться.')) { S.params = S.params.filter(p => p.id !== el.dataset.id); commit(); } },
 
   'import-md': () => $('fileMd').click(),
   'export-json': () => download('stroysmeta-backup-' + new Date().toISOString().slice(0,10) + '.json', JSON.stringify(S, null, 1)),
@@ -470,7 +542,7 @@ const H = {
 };
 const LIVE = {
   'tree-q': el => { ui.q = el.value; $('treebox').innerHTML = treeHtml('', 0, ui.q.toLowerCase()) || '<div class="empty">Ничего не найдено</div>'; },
-  'set-notes': el => { byId(S.stages, el.dataset.id).notes = el.value; grow(el); saveSoon(); }
+  'pick-q': el => { ui.pq = el.value; $('pickbox').innerHTML = pickHtml(curObj(), '', 0, ui.pq.toLowerCase()) || '<div class="empty">Ничего не найдено</div>'; }
 };
 const isField = el => /^(INPUT|SELECT|TEXTAREA)$/.test(el.tagName);
 document.addEventListener('click', e => { const el = e.target.closest('[data-act]'); if (!el || isField(el)) return; if (el.tagName === 'A') e.preventDefault(); if (H[el.dataset.act]) H[el.dataset.act](el, e); });
@@ -479,6 +551,6 @@ document.addEventListener('input', e => { const el = e.target; if (el.dataset &&
 $('fileMd').addEventListener('change', e => { const fs = [...e.target.files]; e.target.value = ''; if (fs.length) importMd(fs); });
 $('fileImport').addEventListener('change', e => { const f = e.target.files[0]; if (!f) return;
   const r = new FileReader(); r.onload = () => { try { const d = JSON.parse(r.result); if (!d.materials || !d.stages || !d.objects) throw new Error('не тот файл');
-    S = Object.assign({materials:[],composites:[],stages:[],objects:[]}, d); ui.objId = null; ui.stageId = null; commit(); } catch (err) { alert('Не удалось загрузить: ' + err.message); } e.target.value = ''; };
+    migrate(d); ui.objId = null; ui.stageId = null; commit(); } catch (err) { alert('Не удалось загрузить: ' + err.message); } e.target.value = ''; };
   r.readAsText(f); });
 render();
