@@ -23,4 +23,20 @@ t('незамкнутый контур: площадь неизвестна, п�
   assert.strictEqual(r.floor, null); assert.ok(r.issues[0].includes('не замкнут')); near(r.perimeter, 14.5); });
 t('неизвестный проём не считается нулём', () => { const m = rect(); m.openings[0].h = null; const r = SM.geo.deriveRoom(m, m.rooms[0]);
   assert.strictEqual(r.wallArea, null); near(r.floor, 12); assert.ok(r.issues.some(s => s.includes('проёма'))); });
+
+/* ---- Фаза 2: модель объекта и тестовая ванная ---- */
+require('../js/model.js'); require('../js/seeds.js');
+t('ванная из ТЗ: 6 стен при углах 90° замыкаются, пол 15.75 м²', () => { const o = SM.seeds.bathroom(), r = SM.model.derive(o)[0];
+  assert.ok(r.closed && o.geometry.walls.length === 6); near(r.floor, 15.75); near(r.ceiling, 15.75); near(r.perimeter, 16); });
+t('ванная: площадь стен = 16×2.7 − проёмы 3.80 (проёмы без привязки)', () => { const r = SM.model.derive(SM.seeds.bathroom())[0];
+  near(r.openingsArea, 1.89 + 1.76 + 0.15); near(r.wallArea, 43.2 - 3.8); assert.ok(r.issues.some(s => s.includes('без привязки'))); });
+t('ванная: изменение длины стены пересчитывает (4→4.5 у пары стен 5/6 ломает контур → неизвестно)', () => { const o = SM.seeds.bathroom(); o.geometry.walls[4].len = 4.5;
+  const r = SM.model.derive(o)[0]; assert.strictEqual(r.floor, null); });
+t('состояние по умолчанию UNKNOWN, не NO', () => { const o = SM.seeds.bathroom(), f = o.surfaces.find(s => s.kind === 'floor');
+  assert.strictEqual(SM.model.getState(o, f.id, 'waterproofing'), 'UNKNOWN'); assert.strictEqual(SM.model.getState(o, f.id, 'existing_floor'), 'YES');
+  assert.throws(() => SM.model.setState(o, f.id, 'x', 'maybe')); });
+t('ванная: закуплено, неизвестное не выдумано', () => { const o = SM.seeds.bathroom(); const g = n => o.purchased.find(p => p.name.includes(n));
+  assert.strictEqual(g('Ceresit').qty, 2); assert.strictEqual(g('Ceresit').packQty, null); assert.strictEqual(g('Перчатки').qty, null); });
+t('миграция: сохраняет неизвестные поля, не принимает схему из будущего', () => { const m = SM.model.migrate({name: 'X', custom: 7, geometry: {walls: [{id: 'a', len: 1}]}});
+  assert.strictEqual(m.custom, 7); assert.strictEqual(m.schemaVersion, SM.model.SCHEMA); assert.deepStrictEqual(m.goals, []); assert.throws(() => SM.model.migrate({schemaVersion: 99})); });
 console.log('\nВсе проверки пройдены: ' + n);

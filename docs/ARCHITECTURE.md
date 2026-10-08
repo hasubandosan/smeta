@@ -18,7 +18,8 @@
 |---|---|---|
 | `core.js` | ✅ | `uid`, `TRI` (YES/NO/UNKNOWN/NA), `isUnknown`, формулы: `parse`→AST, `evalAst`, `evalExpr`, `explain`; `packs` (упаковки) |
 | `geometry.js` | ✅ (ядро) | `SM.geo.deriveRoom`, `polygon`: помещение = замкнутый контур из N стен |
-| `model.js` | ⏳ Фаза 2 | Object, Surface, Observation, State (YES/NO/UNKNOWN), создание/валидация/миграция |
+| `model.js` | ✅ (ядро) | `newObject`, `getState/setState` (по умолчанию UNKNOWN), `addObservation`, `addGoal`, `derive`, `migrate` (`schemaVersion`, неизвестные поля сохраняются, схема из будущего — отказ) |
+| `seeds.js` | ✅ | `SM.seeds.bathroom()` — тестовая ванная из ТЗ как данные |
 | `tech.js` | ⏳ Фаза 3–4 | Process, Technology, Operation, граф связей, эффекты |
 | `rules.js` | ⏳ Фаза 5 | движок правил, объяснения, next-actions, вопросы |
 | `materials.js`, `units.js` | ⏳ Фаза 6 | requirement ≠ product, единицы, потери/резерв |

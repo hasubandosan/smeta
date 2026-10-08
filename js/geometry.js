@@ -32,7 +32,7 @@
       else { R.floor = R.ceiling = area(poly.pts); }
       let wa = 0, oa = 0, wallOk = !!poly.walls;
       for (const w of poly.walls || []) {
-        const height = !unk(w.height) ? +w.height : room.height, ops = model.openings.filter(o => o.wallId === w.id);
+        const height = !unk(w.height) ? +w.height : room.height, ops = (model.openings || []).filter(o => o.wallId === w.id);
         const row = {id: w.id, len: w.len, height: unk(height) ? null : +height, gross: null, openings: 0, net: null};
         if (row.height === null) { issues.push('не указана высота стены «' + (w.name || w.id) + '»'); wallOk = false; }
         else row.gross = w.len * row.height;
@@ -41,7 +41,13 @@
         if (row.gross !== null && !bad) { row.net = row.gross - row.openings; wa += row.net; oa += row.openings; } else wallOk = false;
         R.walls.push(row);
       }
-      if (wallOk) { R.wallArea = wa; R.openingsArea = oa; }
+      // проёмы без привязки к стене (wallId пуст, но roomId = это помещение): на площадь стен в целом влияют так же
+      let loose = 0, looseBad = false;
+      for (const o of model.openings || []) if (!o.wallId && o.roomId === room.id) {
+        if (unk(o.w) || unk(o.h)) { issues.push('не указан размер проёма «' + (o.kind || o.id) + '»'); looseBad = true; } else loose += o.w * o.h;
+      }
+      if (loose) issues.push('есть проёмы без привязки к стене: общая площадь стен верна, по отдельным стенам — нет');
+      if (wallOk && !looseBad) { R.wallArea = wa - loose; R.openingsArea = oa + loose; }
       return R;
     }
   };
