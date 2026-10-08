@@ -1,6 +1,8 @@
 'use strict';
 /* ================= БАЗА ================= */
-const KEY = 'stroysmeta:v3';
+const APP_VERSION = '0.5.0', KEY = 'stroysmeta:v3', SNAPKEY = 'stroysmeta:snaps', SYNCKEY = 'stroysmeta:sync';
+const AUTO_KEYS = ['floor', 'ceiling', 'perimeter', 'walls'];   // считаются из помещений, если они заданы
+const FIN = [['reserve','Запас материалов, %'], ['overhead','Накладные расходы, %'], ['discount','Скидка, %'], ['vat','НДС, %']];
 const uid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-3);
 const esc = s => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 const fmt = n => isFinite(n) ? n.toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2}) : '—';
@@ -21,7 +23,7 @@ function seed() {
     tape = m('Демпферная лента 8–10 мм','material','м',400,25), plast = m('Пластификатор','material','л',300,5), screws = m('Саморезы MN 3.9×19','consumable','шт',500,1000),
     discs = m('Алмазный диск','consumable','шт',1200,1);
   const P = (key, label, unit, def) => ({id:uid(), key, label, unit, def});
-  const params = [P('floor','Площадь пола','м²',0), P('walls','Площадь стен','м²',0), P('perimeter','Периметр','м',0), P('thickness','Толщина стяжки','мм',60)];
+  const params = [P('floor','Площадь пола','м²',0), P('ceiling','Площадь потолка','м²',0), P('walls','Площадь стен','м²',0), P('perimeter','Периметр','м',0), P('thickness','Толщина стяжки','мм',60)];
   const N = (parentId, name, o) => Object.assign({id:uid(), parentId, name, mode:'steps', unit:'', price:0, vol:'', components:[], tools:[], notes:[]}, o || {});
   const c = (mm, rate) => ({refType:'material', refId:mm.id, rate});
   const nt = (cat, text) => ({id:uid(), cat, text});
@@ -55,9 +57,11 @@ function seed() {
     nt('error','Под плитку и ламинат не нужен')]});
   const stages = [r2, r25, r256, semi, ...semiSteps, wet, ...wetSteps, dry, ...drySteps, lev];
   const sel = {}; [r2, r25, r256, semi, ...semiSteps].forEach(s => sel[s.id] = {});
-  const obj = {id:uid(), name:'Пример: квартира 50 м²', note:'Можно удалить', values:{floor:50, walls:120, perimeter:30, thickness:60}, sel, pick:{[r256.id]:semi.id}, extra:[]};
+  const R = (name, l, w, h, open) => ({id:uid(), name, l, w, h, open});
+  const obj = {id:uid(), name:'Пример: квартира 50 м²', note:'Можно удалить', values:{thickness:60}, rooms:[R('Гостиная',6,5,2.7,4.5), R('Кухня',4,3,2.7,2), R('Прихожая',4,2,2.7,1.6)],
+    fin:{reserve:5, overhead:10, discount:0, vat:0}, sel, pick:{[r256.id]:semi.id}, extra:[]};
   sel[semiSteps[3].id] = {q:'12'};
-  return {materials:[sand,fib,film,keram,gvl,pva,tape,plast,screws,discs], composites:[], tools:Object.values(tl), params, stages, objects:[obj]};
+  return {materials:[sand,fib,film,keram,gvl,pva,tape,plast,screws,discs], composites:[], tools:Object.values(tl), params, stages, objects:[obj], finDefaults:{reserve:0, overhead:0, discount:0, vat:0}, updated:Date.now(), version:APP_VERSION};
 }
 
 /* заметки Obsidian → пункты и инструменты */
@@ -80,14 +84,16 @@ function parseNote(text) {
 function getTool(name) { let t = S.tools.find(x => x.name.toLowerCase() === name.toLowerCase()); if (!t) { t = {id:uid(), name, note:''}; S.tools.push(t); } return t; }
 
 function migrate(d) {
-  d = Object.assign({materials:[], composites:[], tools:[], params:[], stages:[], objects:[]}, d); S = d;
+  d = Object.assign({materials:[], composites:[], tools:[], params:[], stages:[], objects:[], finDefaults:{reserve:0, overhead:0, discount:0, vat:0}}, d); S = d;
   if (!d.params.length) d.params = [{id:uid(),key:'floor',label:'Площадь пола',unit:'м²',def:0},{id:uid(),key:'walls',label:'Площадь стен',unit:'м²',def:0},{id:uid(),key:'perimeter',label:'Периметр',unit:'м',def:0}];
+  if (!d.params.some(p => p.key === 'ceiling')) d.params.splice(1, 0, {id:uid(), key:'ceiling', label:'Площадь потолка', unit:'м²', def:0});
+  d.updated = d.updated || Date.now(); d.version = APP_VERSION;
   for (const s of d.stages) {
     if (typeof s.notes === 'string') { const p = parseNote(s.notes); s.notes = p.items; s.tools = (s.tools || []).concat(p.tools.map(n => getTool(n).id)); }
     Object.assign(s, {mode:s.mode || 'steps', unit:s.unit || '', price:s.price || 0, vol:s.vol || '', components:s.components || [], tools:s.tools || [], notes:s.notes || []});
   }
   for (const o of d.objects) {
-    o.values = o.values || {}; o.sel = o.sel || {}; o.pick = o.pick || {}; o.extra = o.extra || [];
+    o.values = o.values || {}; o.rooms = o.rooms || []; o.fin = Object.assign({reserve:0, overhead:0, discount:0, vat:0}, o.fin); o.sel = o.sel || {}; o.pick = o.pick || {}; o.extra = o.extra || [];
     for (const p of o.params || []) { o.values[p.key] = p.value; if (!d.params.some(x => x.key === p.key)) d.params.push({id:uid(), key:p.key, label:p.label, unit:'', def:0}); }
     for (const it of o.items || []) { if (it.type === 'stage' && byId(d.stages, it.refId)) { for (const a of anc(it.refId)) o.sel[a.id] = o.sel[a.id] || {}; o.sel[it.refId] = {q:String(it.qty)}; } else o.extra.push(it); }
     delete o.params; delete o.items;
@@ -99,9 +105,13 @@ let S = {materials:[], composites:[], tools:[], params:[], stages:[], objects:[]
   try { const raw = localStorage.getItem(KEY) || localStorage.getItem('stroysmeta:v2'); if (raw) { migrate(JSON.parse(raw)); return; } } catch (e) { console.error(e); }
   S = seed();
 })();
-const ui = {tab:'stages', stageId:null, objId:null, collapsed:new Set(), pexp:new Set(), rows:new Set(), custom:false, q:'', pq:''};
-function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { alert('Не удалось сохранить: ' + e.message); } }
-window.addEventListener('beforeunload', save);
+const ui = {tab:'stages', stageId:null, objId:null, collapsed:new Set(), pexp:new Set(), rows:new Set(), custom:false, q:'', pq:'', rp:''};
+function save(opts) {
+  if (!opts || !opts.keepStamp) S.updated = Date.now();
+  try { localStorage.setItem(KEY, JSON.stringify(S)); snap(); } catch (e) { alert('Не удалось сохранить: ' + e.message); }
+  scheduleSync();
+}
+window.addEventListener('beforeunload', () => save({keepStamp:true}));
 function commit() { save(); render(); }
 
 /* ================= РАСЧЁТЫ ================= */
@@ -112,7 +122,14 @@ function anc(id) { const a = []; let n = byId(S.stages,id); while (n) { a.unshif
 const path = id => anc(id).map(s => s.name);
 function descIds(id, acc = new Set()) { kids(id).forEach(k => { acc.add(k.id); descIds(k.id, acc); }); return acc; }
 const defVars = () => { const v = Object.create(null); S.params.forEach(p => v[p.key] = num(p.def)); return v; };
-const objVars = o => { const v = Object.create(null); S.params.forEach(p => v[p.key] = num(o.values[p.key] !== undefined ? o.values[p.key] : p.def)); return v; };
+function roomsCalc(rooms) {
+  const r = {floor:0, ceiling:0, perimeter:0, walls:0};
+  rooms.forEach(x => { const l = num(x.l), w = num(x.w), p = 2 * (l + w); r.floor += l*w; r.ceiling += l*w; r.perimeter += p; r.walls += Math.max(0, p*num(x.h) - num(x.open)); });
+  return r;
+}
+const scopeRooms = (o, ids) => { if (!ids || !ids.length) return o.rooms; const f = o.rooms.filter(r => ids.includes(r.id)); return f.length ? f : o.rooms; };
+const objVars = (o, ids) => { const v = Object.create(null); S.params.forEach(p => v[p.key] = num(o.values[p.key] !== undefined ? o.values[p.key] : p.def));
+  if (o.rooms.length) Object.assign(v, roomsCalc(scopeRooms(o, ids))); return v; };
 
 function evalExpr(src, vars) {
   if (typeof src === 'number') return src;
@@ -182,6 +199,8 @@ function includeNode(o, id) {
 function excludeNode(o, id) { delete o.sel[id]; descIds(id).forEach(d => delete o.sel[d]); }
 
 function rowOf(o, kind, x, V) {
+  const k = 1 + num((o.fin || {}).reserve) / 100;
+  if (kind === 'stage') V = objVars(o, o.sel[x.id] && o.sel[x.id].rooms);
   let name, unit, grp, parent = '', uc = {mat:0,cons:0,labor:0,cyc:false}, pill, pillLabel, src, missing = false, key = x.id, canOpen = false, refType = null, refId = null;
   if (kind === 'stage') {
     name = x.name; unit = x.unit; grp = path(x.id)[0]; parent = path(x.parentId).join(' › '); uc = cost('stage', x.id, V); pill = 'stage'; pillLabel = 'этап'; canOpen = true; refType = 'stage'; refId = x.id;
@@ -195,7 +214,7 @@ function rowOf(o, kind, x, V) {
   }
   const q0 = missing ? 0 : evalExpr(src, V), bad = isNaN(q0), q = bad ? 0 : q0;
   return {key, kind, x, name, unit, grp, parent, uc, pill, pillLabel, src, q, bad, missing, canOpen, refType, refId, cyc:uc.cyc,
-    mat:q*uc.mat, cons:q*uc.cons, labor:q*uc.labor, total:q*(uc.mat+uc.cons+uc.labor)};
+    V, k, mat:q*uc.mat*k, cons:q*uc.cons*k, labor:q*uc.labor, total:q*(uc.mat*k + uc.cons*k + uc.labor)};
 }
 function objRows(o) {
   const V = objVars(o);
@@ -204,13 +223,15 @@ function objRows(o) {
 function totals(o, rows = objRows(o)) {
   const T = {mat:0, cons:0, labor:0, total:0, groups:new Map()};
   for (const r of rows) { T.mat += r.mat; T.cons += r.cons; T.labor += r.labor; T.total += r.total; T.groups.set(r.grp, (T.groups.get(r.grp) || 0) + r.total); }
+  const f = o.fin || {}; T.sub = T.total; T.overhead = T.sub * num(f.overhead) / 100;
+  const a = T.sub + T.overhead; T.discount = a * num(f.discount) / 100; const b = a - T.discount; T.vat = b * num(f.vat) / 100; T.grand = b + T.vat;
   return T;
 }
 function buyList(o, rows = objRows(o)) {
-  const V = objVars(o), acc = new Map(), extra = [];
+  const acc = new Map(), extra = [];
   for (const r of rows) {
-    if (r.refType) mats(r.refType, r.refId, r.q, V, acc);
-    else if (r.x.category !== 'labor') extra.push({name:r.name, cat:r.x.category, unit:r.unit, qty:r.q, packQty:0, packs:0, exact:r.mat + r.cons, buy:r.mat + r.cons});
+    if (r.refType) mats(r.refType, r.refId, r.q * r.k, r.V, acc);
+    else if (r.x.category !== 'labor') extra.push({name:r.name, cat:r.x.category, unit:r.unit, qty:r.q * r.k, packQty:0, packs:0, exact:r.mat + r.cons, buy:r.mat + r.cons});
   }
   const list = [];
   for (const [id, qty] of acc) { const m = byId(S.materials,id), pq = +m.packQty > 0 ? +m.packQty : 0, packs = pq ? Math.ceil(qty / pq - 1e-9) : 0;
@@ -319,7 +340,7 @@ function stageDetail(s) {
 /* --- объекты --- */
 function viewObjects() {
   const o = byId(S.objects, ui.objId);
-  const list = S.objects.map(x => `<div class="orow ${x.id === ui.objId ? 'on' : ''}" data-act="sel-obj" data-id="${x.id}"><b>${esc(x.name)}</b><span>${fmt(totals(x).total)} ₽</span></div>`).join('');
+  const list = S.objects.map(x => `<div class="orow ${x.id === ui.objId ? 'on' : ''}" data-act="sel-obj" data-id="${x.id}"><b>${esc(x.name)}</b><span>${fmt(totals(x).grand)} ₽</span></div>`).join('');
   return `<div class="split ${o ? 'sel' : ''}"><aside class="list"><div class="lh"><b>Объекты</b><button class="ib" data-act="add-obj" title="Новый объект">＋</button></div>
     <div class="olist">${list || '<div class="empty">Объектов нет. Нажмите ＋</div>'}</div></aside>
     <section class="detail">${o ? objectDetail(o) : '<div class="ph">← Выберите объект или создайте новый (＋).<br><br>Объект — квартира, дом, помещение. Вы задаёте его параметры (площади, толщины) и отмечаете, какие этапы работ применяются. Материалы, количества и деньги считаются сами.</div>'}</section></div>`;
@@ -333,21 +354,42 @@ function pickHtml(o, pid, d, q) {
     let vol = '';
     if (on && s.unit && !(parent && parent.mode === 'choice' && o.pick[pid] !== s.id)) { const r = rowOf(o, 'stage', s, V), ov = (o.sel[s.id] && o.sel[s.id].q) || '';
       vol = `<span class="vol"><input class="cell mono" data-act="set-q" data-id="${s.id}" value="${esc(ov)}" placeholder="${esc(s.vol || 'объём')}" title="Объём: число или формула. Пусто — по умолчанию (${esc(s.vol)})"> <span class="eq">${r.bad ? '<span class="warn">ошибка</span>' : r.missing ? '<span class="warn">укажите объём</span>' : '= ' + fmtQ(r.q) + ' ' + esc(s.unit)}</span> <span class="mono">${fmt(r.total)} ₽</span></span>`; }
+    let scope = '', roomLine = '';
+    if (on && s.unit && o.rooms.length > 1 && !(parent && parent.mode === 'choice' && o.pick[pid] !== s.id)) {
+      const ids = ((o.sel[s.id] || {}).rooms || []).filter(i => o.rooms.some(r => r.id === i)), lbl = ids.length ? `${ids.length} из ${o.rooms.length}` : 'все';
+      scope = `<button class="btn sm ghost" data-act="tgl-rp" data-id="${s.id}" title="В каких помещениях делаем">🏠 ${lbl}</button>`;
+      if (ui.rp === s.id) roomLine = `<div class="prow" style="padding-left:${30 + d*18}px"><span class="hint">Помещения:</span>${o.rooms.map(r => `<label style="flex:none"><input type="checkbox" data-act="toggle-room" data-id="${s.id}" data-room="${r.id}" ${!ids.length || ids.includes(r.id) ? 'checked' : ''}> ${esc(r.name)}</label>`).join('')}</div>`;
+    }
     return `<div class="prow ${on ? 'on' : ''}" style="padding-left:${6 + d*18}px"><span class="car" data-act="tgl-pick" data-id="${s.id}" style="cursor:pointer">${has ? (open ? '▾' : '▸') : ''}</span>
-      <label>${input}<span>${esc(s.name)}${s.mode === 'choice' && has ? '<span class="fork">⑂ выбор варианта</span>' : ''}</span></label>${vol}</div>`
+      <label>${input}<span>${esc(s.name)}${s.mode === 'choice' && has ? '<span class="fork">⑂ выбор варианта</span>' : ''}</span></label>${scope}${vol}</div>${roomLine}`
       + (has && open ? pickHtml(o, s.id, d + 1, q) : '');
   }).join('');
 }
 function objectDetail(o) {
   const rows = objRows(o), T = totals(o, rows), bl = buyList(o, rows), buyTotal = bl.reduce((s, x) => s + x.buy, 0), tn = toolsNeeded(o);
-  const prm = S.params.map(p => `<div class="field"><label>${esc(p.label)}${p.unit ? ', ' + esc(p.unit) : ''} <span class="mono">${esc(p.key)}</span></label><input class="num w" data-act="set-value" data-key="${esc(p.key)}" value="${esc(o.values[p.key] !== undefined ? o.values[p.key] : p.def)}"></div>`).join('');
+  const rc = roomsCalc(o.rooms), hasR = o.rooms.length > 0;
+  const prm = S.params.map(p => { const auto = hasR && AUTO_KEYS.includes(p.key);
+    return `<div class="field"><label>${esc(p.label)}${p.unit ? ', ' + esc(p.unit) : ''} <span class="mono">${esc(p.key)}</span>${auto ? ' · из помещений' : ''}</label><input class="num w" ${auto ? 'disabled' : ''} data-act="set-value" data-key="${esc(p.key)}" value="${auto ? esc(n2(rc[p.key])) : esc(o.values[p.key] !== undefined ? o.values[p.key] : p.def)}"></div>`; }).join('');
+  const roomRows = o.rooms.map(r => { const l = num(r.l), w = num(r.w), pm = 2 * (l + w);
+    return `<tr><td><input class="cell" style="width:100%;min-width:120px" data-act="set-room" data-id="${r.id}" data-f="name" value="${esc(r.name)}"></td>` +
+      ['l','w','h','open'].map(f => `<td class="num"><input class="cell num" style="width:76px" data-act="set-room" data-id="${r.id}" data-f="${f}" value="${esc(r[f])}"></td>`).join('') +
+      `<td class="num">${fmt(l*w)}</td><td class="num">${fmt(Math.max(0, pm*num(r.h) - num(r.open)))}</td><td><button class="btn sm ghost bad" data-act="del-room" data-id="${r.id}">✕</button></td></tr>`; }).join('');
+  const roomsCard = `<div class="card"><div class="ch"><h3>1. Помещения</h3><span class="hint">необязательно</span></div>
+    ${hasR ? `<div class="scroll"><table><thead><tr><th>Помещение</th><th class="num">Длина, м</th><th class="num">Ширина, м</th><th class="num">Высота, м</th><th class="num">Проёмы, м²</th><th class="num">Пол, м²</th><th class="num">Стены, м²</th><th></th></tr></thead><tbody>${roomRows}</tbody></table></div>
+    <div class="totals"><div><span>Пол / потолок</span><b>${fmt(rc.floor)} м²</b></div><div><span>Стены</span><b>${fmt(rc.walls)} м²</b></div><div><span>Периметр</span><b>${fmt(rc.perimeter)} м</b></div></div>` : ''}
+    <div class="addrow"><div class="field"><label>Помещение</label><input id="rName" placeholder="Спальня"></div><div class="field"><label>Длина, м</label><input id="rL" class="w"></div><div class="field"><label>Ширина, м</label><input id="rW" class="w"></div>
+    <div class="field"><label>Высота, м</label><input id="rH" class="w" placeholder="2.7"></div><div class="field"><label>Проёмы, м²</label><input id="rO" class="w" placeholder="0"></div><button class="btn" data-act="add-room">Добавить помещение</button></div>
+    <div class="hint" style="padding:0 16px 12px">С помещениями площади пола, потолка, стен и периметр считаются сами, а этап можно привязать к отдельным комнатам (кнопка 🏠 в списке работ). Без помещений значения вводятся вручную в параметрах. Проёмы — окна и двери, вычитаются из стен.</div></div>`;
+  const finBlock = `<div class="addrow" style="border-top:1px solid var(--line)">${FIN.map(([k, l]) => `<div class="field"><label>${l}</label><input class="num w" data-act="set-fin" data-key="${k}" value="${esc(o.fin[k])}"></div>`).join('')}</div>
+    <div class="totals"><div><span>Накладные</span><b>${fmt(T.overhead)} ₽</b></div><div><span>Скидка</span><b>${fmt(T.discount ? -T.discount : 0)} ₽</b></div><div><span>НДС</span><b>${fmt(T.vat)} ₽</b></div><div class="g"><span>К оплате</span><b>${fmt(T.grand)} ₽</b></div></div>
+    <div class="hint" style="padding:0 16px 12px">Запас добавляется к материалам и расходникам (и в закупку). Накладные считаются от подытога, скидка — после накладных, НДС — в конце.</div>`;
   const groups = new Map(); rows.forEach(r => { if (!groups.has(r.grp)) groups.set(r.grp, []); groups.get(r.grp).push(r); });
   let n = 0, srows = '';
   for (const [g, arr] of groups) {
     srows += `<tr class="grp"><td colspan="9">${esc(g)}<span class="gs">${fmt(T.groups.get(g))} ₽</span></td></tr>`;
     for (const r of arr) { n++; const open = ui.rows.has(r.key); let bd = '';
       if (r.canOpen && open) {
-        const ls = [...mats(r.refType, r.refId, r.q, objVars(o))].map(([id, q]) => { const m = byId(S.materials, id);
+        const ls = [...mats(r.refType, r.refId, r.q * r.k, r.V)].map(([id, q]) => { const m = byId(S.materials, id);
           return `<tr><td>${esc(m.name)} <span class="pill ${m.category}">${m.category === 'consumable' ? 'расходник' : 'материал'}</span></td><td>${esc(m.unit)}</td><td class="num">${fmtQ(q)}</td><td class="num">${fmt(q * unitPrice(m))} ₽</td></tr>`; }).join('');
         bd = `<tr><td></td><td colspan="8" style="padding:0"><div class="bd">${ls ? `<table><thead><tr><th>Материал</th><th>Ед.</th><th class="num">Нужно</th><th class="num">Стоимость</th></tr></thead><tbody>${ls}</tbody></table>` : '<span class="hint">Материалов нет.</span>'}</div></td></tr>`; }
       srows += `<tr><td class="idx">${n}</td><td><span class="pill ${r.pill}">${esc(r.pillLabel)}</span>${esc(r.name)}${r.cyc ? ' <span class="warn">⚠ цикл</span>' : ''}${r.missing ? ' <span class="warn">нет объёма</span>' : ''}${r.parent ? `<div class="path">${esc(r.parent)}</div>` : ''}
@@ -367,22 +409,23 @@ function objectDetail(o) {
   <input class="namein" data-act="set-obj" data-f="name" value="${esc(o.name)}"><input class="namein sub" data-act="set-obj" data-f="note" placeholder="Адрес / заметка" value="${esc(o.note || '')}">
   <div class="bar"><button class="btn pri" data-act="export-xlsx">Экспорт в Excel</button><button class="btn bad" data-act="del-obj">Удалить объект</button></div>
 
-  <div class="card"><div class="ch"><h3>1. Параметры объекта</h3><button class="btn sm" data-act="add-param">＋ параметр</button></div><div class="cb"><div class="fields">${prm || '<span class="hint">Параметров нет.</span>'}</div></div></div>
+  ${roomsCard}
+  <div class="card"><div class="ch"><h3>2. Параметры объекта</h3><button class="btn sm" data-act="add-param">＋ параметр</button></div><div class="cb"><div class="fields">${prm || '<span class="hint">Параметров нет.</span>'}</div></div></div>
 
-  <div class="card"><div class="ch"><h3>2. Какие работы выполняем</h3><input class="search" style="width:200px;margin:0" data-live="pick-q" placeholder="Поиск…" value="${esc(ui.pq)}"></div>
+  <div class="card"><div class="ch"><h3>3. Какие работы выполняем</h3><input class="search" style="width:200px;margin:0" data-live="pick-q" placeholder="Поиск…" value="${esc(ui.pq)}"></div>
     <div class="legend">Отметьте этапы. Для ветвления (⑂) выберите один вариант. Объём считается по формуле этапа из параметров, его можно переопределить в поле справа.</div>
     <div class="pbox" id="pickbox">${pickHtml(o, '', 0, ui.pq.toLowerCase()) || '<div class="empty">Нет этапов. Создайте их на вкладке «Технологии».</div>'}</div></div>
 
-  <div class="card"><div class="ch"><h3>3. Смета</h3></div>
+  <div class="card"><div class="ch"><h3>4. Смета</h3></div>
     ${rows.length ? `<div class="scroll"><table><thead><tr><th></th><th>Этап / позиция</th><th class="num">Объём</th><th class="num">Цена/ед.</th><th class="num">Материалы</th><th class="num">Расходники</th><th class="num">Работа</th><th class="num">Сумма</th><th></th></tr></thead><tbody>${srows}</tbody></table></div>
-    <div class="totals"><div><span>Материалы</span><b>${fmt(T.mat)} ₽</b></div><div><span>Расходники</span><b>${fmt(T.cons)} ₽</b></div><div><span>Работа</span><b>${fmt(T.labor)} ₽</b></div><div class="g"><span>Итого</span><b>${fmt(T.total)} ₽</b></div></div>`
+    <div class="totals"><div><span>Материалы</span><b>${fmt(T.mat)} ₽</b></div><div><span>Расходники</span><b>${fmt(T.cons)} ₽</b></div><div><span>Работа</span><b>${fmt(T.labor)} ₽</b></div><div><span>Подытог</span><b>${fmt(T.sub)} ₽</b></div></div>${finBlock}`
     : '<div class="empty">Пока ничего не выбрано. Отметьте этапы выше.</div>'}
     ${erows ? `<div class="ch" style="border-top:1px solid var(--line)"><h3>Дополнительные позиции</h3></div><div class="scroll"><table><tbody>${erows}</tbody></table></div>` : ''}
     <div class="addrow"><b class="hint" style="align-self:center">Добавить вручную:</b>${addForm}<button class="btn ghost sm" data-act="tgl-custom">${ui.custom ? '← материал/композит' : 'своя позиция'}</button></div></div>
 
-  ${rows.length ? `<div class="card"><div class="ch"><h3>4. Материалы к закупке</h3><span class="hint">упаковки округляются вверх</span></div><div class="scroll"><table><thead><tr><th>Материал</th><th>Ед.</th><th class="num">Нужно</th><th class="num">В упак.</th><th class="num">Упаковок</th><th class="num">По факту, ₽</th><th class="num">К закупке, ₽</th></tr></thead><tbody>${bl.map(x => `<tr><td>${esc(x.name)} <span class="pill ${x.cat}">${x.cat === 'consumable' ? 'расходник' : 'материал'}</span></td><td>${esc(x.unit)}</td><td class="num">${fmtQ(x.qty)}</td><td class="num">${x.packQty ? fmtQ(x.packQty) : '—'}</td><td class="num">${x.packQty ? '<b>' + x.packs + '</b>' : '—'}</td><td class="num">${fmt(x.exact)}</td><td class="num">${fmt(x.buy)}</td></tr>`).join('') || '<tr><td colspan="7" class="hint">Материалов нет</td></tr>'}</tbody></table></div>
+  ${rows.length ? `<div class="card"><div class="ch"><h3>5. Материалы к закупке</h3><span class="hint">упаковки округляются вверх</span></div><div class="scroll"><table><thead><tr><th>Материал</th><th>Ед.</th><th class="num">Нужно</th><th class="num">В упак.</th><th class="num">Упаковок</th><th class="num">По факту, ₽</th><th class="num">К закупке, ₽</th></tr></thead><tbody>${bl.map(x => `<tr><td>${esc(x.name)} <span class="pill ${x.cat}">${x.cat === 'consumable' ? 'расходник' : 'материал'}</span></td><td>${esc(x.unit)}</td><td class="num">${fmtQ(x.qty)}</td><td class="num">${x.packQty ? fmtQ(x.packQty) : '—'}</td><td class="num">${x.packQty ? '<b>' + x.packs + '</b>' : '—'}</td><td class="num">${fmt(x.exact)}</td><td class="num">${fmt(x.buy)}</td></tr>`).join('') || '<tr><td colspan="7" class="hint">Материалов нет</td></tr>'}</tbody></table></div>
     <div class="totals"><div class="g"><span>Закупка (целые упаковки)</span><b>${fmt(buyTotal)} ₽</b></div></div></div>
-  <div class="card"><div class="ch"><h3>5. Нужные инструменты</h3></div>${tn.length ? `<div class="scroll"><table><tbody>${tn.map(x => `<tr><td>${esc(x.t.name)}</td><td class="hint">${esc(x.where.join('; '))}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">В выбранных этапах инструменты не указаны.</div>'}</div>` : ''}`;
+  <div class="card"><div class="ch"><h3>6. Нужные инструменты</h3></div>${tn.length ? `<div class="scroll"><table><tbody>${tn.map(x => `<tr><td>${esc(x.t.name)}</td><td class="hint">${esc(x.where.join('; '))}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">В выбранных этапах инструменты не указаны.</div>'}</div>` : ''}`;
 }
 
 /* --- материалы / инструменты / композиты / данные --- */
@@ -421,15 +464,16 @@ function viewComposites() {
   <div class="field"><label>Ед. результата</label><input id="kUnit" class="w" placeholder="м2"></div><button class="btn pri" data-act="add-composite">Создать</button></div></div></div>`;
 }
 function viewData() {
+  const extra = dataExtra();
   const prow = S.params.map(p => `<tr><td><input class="cell" style="width:100%" data-act="set-pdef" data-id="${p.id}" data-f="label" value="${esc(p.label)}"></td>
     <td><input class="cell mono" style="width:120px" data-act="set-pdef" data-id="${p.id}" data-f="key" value="${esc(p.key)}"></td><td><input class="cell" style="width:60px" data-act="set-pdef" data-id="${p.id}" data-f="unit" value="${esc(p.unit)}"></td>
     <td class="num"><input class="cell num" style="width:90px" data-act="set-pdef" data-id="${p.id}" data-f="def" value="${esc(p.def)}"></td><td><button class="btn sm ghost bad" data-act="del-pdef" data-id="${p.id}">✕</button></td></tr>`).join('');
-  return `<div class="page"><h2 style="margin-top:0">Данные</h2>
+  return `<div class="page"><h2 style="margin-top:0">Данные <small class="hint">версия ${APP_VERSION}</small></h2>
   <div class="card"><div class="ch"><h3>Параметры расчёта</h3><button class="btn sm" data-act="add-pdef">＋ параметр</button></div><div class="cb"><p class="hint" style="margin-top:0">Общий список параметров. У каждого объекта свои значения. Ключ используется в формулах объёма и расхода (floor, walls, thickness…).</p></div>
     <div class="scroll"><table><thead><tr><th>Название</th><th>Ключ</th><th>Ед.</th><th class="num">По умолчанию</th><th></th></tr></thead><tbody>${prow}</tbody></table></div></div>
   <div class="card"><div class="ch"><h3>Импорт заметок из Obsidian</h3></div><div class="cb"><p class="hint" style="margin-top:0">Выберите .md-файлы хранилища. Каждый файл станет этапом (вложенность по номеру в названии: «2.5.6. …» попадёт в «2.5.»). Содержимое разбирается в пункты «Условие / Ошибка / Приёмка / Заметка», а перечисленные инструменты — в справочник и привязку к этапу. Материалы, цены и объёмы вы задаёте сами.</p>
   <button class="btn pri" data-act="import-md">Выбрать .md файлы…</button></div></div>
-  <div class="card"><div class="ch"><h3>Резервная копия</h3></div><div class="cb"><p class="hint" style="margin-top:0">Всё хранится в этом браузере. Очистка данных браузера всё сотрёт — иногда скачивайте копию.</p>
+  ${extra}<div class="card"><div class="ch"><h3>Резервная копия</h3></div><div class="cb"><p class="hint" style="margin-top:0">Всё хранится в этом браузере. Очистка данных браузера всё сотрёт — иногда скачивайте копию.</p>
   <button class="btn pri" data-act="export-json">Скачать копию (JSON)</button> <button class="btn" data-act="import-json">Загрузить из файла</button> <button class="btn bad" data-act="reset">Сбросить к примеру</button></div></div></div>`;
 }
 
@@ -439,7 +483,9 @@ function exportXlsx(o) {
   const rows = objRows(o), T = totals(o, rows), bl = buyList(o, rows);
   const a = [[o.name],[o.note||''],[],['№','Раздел','Этап / позиция','Ед.','Объём','Цена/ед., ₽','Материалы, ₽','Расходники, ₽','Работа, ₽','Сумма, ₽']];
   rows.forEach((r,i) => a.push([i+1, r.grp, r.name, r.unit, n2(r.q), n2(r.uc.mat+r.uc.cons+r.uc.labor), n2(r.mat), n2(r.cons), n2(r.labor), n2(r.total)]));
-  a.push([], ['','','ИТОГО','','','',n2(T.mat),n2(T.cons),n2(T.labor),n2(T.total)]);
+  a.push([], ['','','ПОДИТОГ','','','',n2(T.mat),n2(T.cons),n2(T.labor),n2(T.sub)]);
+  if (num(o.fin.reserve)) a.push(['','','Запас материалов учтён, %','','','',num(o.fin.reserve)]);
+  a.push(['','','Накладные расходы','','','','','','',n2(T.overhead)], ['','','Скидка','','','','','','',-n2(T.discount)], ['','','НДС','','','','','','',n2(T.vat)], ['','','К ОПЛАТЕ','','','','','','',n2(T.grand)]);
   const s1 = XLSX.utils.aoa_to_sheet(a); s1['!cols'] = [4,30,50,7,10,12,14,14,12,14].map(w => ({wch:w}));
   const b = [['Материал','Тип','Ед.','Нужно','В упак.','Упаковок','По факту, ₽','К закупке, ₽']];
   bl.forEach(x => b.push([x.name, x.cat==='consumable'?'расходник':'материал', x.unit, n2(x.qty), x.packQty||'', x.packs||'', n2(x.exact), n2(x.buy)]));
@@ -447,7 +493,8 @@ function exportXlsx(o) {
   const s2 = XLSX.utils.aoa_to_sheet(b); s2['!cols'] = [34,12,7,10,9,10,14,14].map(w => ({wch:w}));
   const s3 = XLSX.utils.aoa_to_sheet([['Инструмент','Где нужен']].concat(toolsNeeded(o).map(x => [x.t.name, x.where.join('; ')]))); s3['!cols'] = [36,70].map(w => ({wch:w}));
   const s4 = XLSX.utils.aoa_to_sheet([['Параметр','Ключ','Значение','Ед.']].concat(S.params.map(p => [p.label, p.key, num(o.values[p.key] !== undefined ? o.values[p.key] : p.def), p.unit]))); s4['!cols'] = [30,14,12,8].map(w => ({wch:w}));
-  const wb = XLSX.utils.book_new(); [['Смета',s1],['Материалы',s2],['Инструменты',s3],['Параметры',s4]].forEach(([n,s]) => XLSX.utils.book_append_sheet(wb, s, n));
+  const s5 = XLSX.utils.aoa_to_sheet([['Помещение','Длина, м','Ширина, м','Высота, м','Проёмы, м²','Пол, м²','Стены, м²']].concat(o.rooms.map(r => [r.name, num(r.l), num(r.w), num(r.h), num(r.open), n2(num(r.l)*num(r.w)), n2(Math.max(0, 2*(num(r.l)+num(r.w))*num(r.h) - num(r.open)))]))); s5['!cols'] = [24,10,10,10,11,10,10].map(w => ({wch:w}));
+  const wb = XLSX.utils.book_new(); [['Смета',s1],['Материалы',s2],['Инструменты',s3],['Параметры',s4]].concat(o.rooms.length ? [['Помещения',s5]] : []).forEach(([n,s]) => XLSX.utils.book_append_sheet(wb, s, n));
   XLSX.writeFile(wb, 'smeta_' + (o.name || 'object').replace(/[^\p{L}\d]+/gu,'_') + '.xlsx');
 }
 function download(name, text) { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], {type:'application/json'})); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000); }
@@ -466,6 +513,72 @@ async function importMd(files) {
     S.stages.push({id:uid(), parentId, name:it.name, mode:'steps', unit:'', price:0, vol:'', components:[], tools:[...new Set(tids)], notes:pn.items}); added++;
   }
   ui.tab = 'stages'; commit(); alert(`Готово: добавлено этапов — ${added}, обновлено — ${upd}. Инструментов в справочнике: ${S.tools.length}.`);
+}
+
+/* ================= СНИМКИ И ОБЛАКО (GitHub Gist) ================= */
+const snaps = () => { try { return JSON.parse(localStorage.getItem(SNAPKEY) || '[]'); } catch (e) { return []; } };
+function snap(force) { // локальные точки отката: не чаще раза в 5 минут, последние 5
+  try { const arr = snaps(), last = arr[arr.length - 1], now = Date.now();
+    if (!force && last && now - last.t < 5 * 60e3) return;
+    arr.push({t:now, d:JSON.stringify(S)}); while (arr.length > 5) arr.shift(); localStorage.setItem(SNAPKEY, JSON.stringify(arr)); } catch (e) { try { localStorage.removeItem(SNAPKEY); } catch (e2) {} }
+}
+const syncCfg = () => { try { return JSON.parse(localStorage.getItem(SYNCKEY)) || {}; } catch (e) { return {}; } };
+const setSyncCfg = c => localStorage.setItem(SYNCKEY, JSON.stringify(c));   // токен хранится только здесь и не попадает в резервные копии
+let syncMsg = '', syncBusy = false, syncT;
+function showSync(msg, bad) { syncMsg = msg; const el = $('sync'); if (el) { el.textContent = msg; el.className = 'sync' + (bad ? ' bad' : ''); } }
+const stamp = () => new Date().toLocaleTimeString('ru-RU', {hour:'2-digit', minute:'2-digit'});
+const GFILE = 'stroysmeta.json';
+async function gh(method, url, body) {
+  const r = await fetch('https://api.github.com' + url, {method, headers:Object.assign({Authorization:'Bearer ' + syncCfg().token, Accept:'application/vnd.github+json'}, body ? {'Content-Type':'application/json'} : {}), body:body ? JSON.stringify(body) : undefined});
+  if (!r.ok) throw new Error(r.status === 401 ? 'токен не подошёл (401)' : r.status === 404 ? 'не найдено (404)' : 'ошибка GitHub ' + r.status);
+  return r.json();
+}
+const gistFind = async () => (await gh('GET', '/gists?per_page=100')).find(g => g.files && g.files[GFILE]);
+async function gistRead(id) { const g = await gh('GET', '/gists/' + id), f = g.files[GFILE]; if (!f) throw new Error('в облаке нет файла данных');
+  return JSON.parse(f.truncated ? await (await fetch(f.raw_url)).text() : f.content); }
+async function cloudPush() {
+  const c = syncCfg(); if (!c.token || syncBusy) return; syncBusy = true;
+  try { const files = {[GFILE]:{content:JSON.stringify(S)}};
+    if (c.gistId) await gh('PATCH', '/gists/' + c.gistId, {files});
+    else c.gistId = (await gh('POST', '/gists', {description:'Помощник строителя — данные (не удалять)', public:false, files})).id;
+    c.lastSync = S.updated; setSyncCfg(c); showSync('☁ сохранено ' + stamp());
+  } catch (e) { showSync('☁ ошибка: ' + e.message, true); } finally { syncBusy = false; }
+}
+function applyRemote(d) { snap(true); migrate(d); ui.objId = null; ui.stageId = null; save({keepStamp:true}); render(true); }
+function scheduleSync() { const c = syncCfg(); if (!c.token || c.auto === false) return; clearTimeout(syncT); showSync('☁ …'); syncT = setTimeout(cloudPush, 3000); }
+async function cloudConnect(token) {
+  setSyncCfg({token, auto:true});
+  try { const g = await gistFind(), c = syncCfg();
+    if (g) { c.gistId = g.id; setSyncCfg(c);
+      if (confirm('В облаке уже есть данные. ОК — загрузить их сюда. Отмена — перезаписать облако текущими данными.')) { applyRemote(await gistRead(g.id)); c.lastSync = S.updated; setSyncCfg(c); showSync('☁ загружено ' + stamp()); }
+      else await cloudPush();
+    } else await cloudPush();
+  } catch (e) { setSyncCfg({}); showSync(''); alert('Не удалось подключить: ' + e.message); }
+  render();
+}
+async function cloudReconcile() { // при запуске: сверить облако и локальные данные
+  const c = syncCfg(); if (!c.token) return;
+  try { showSync('☁ проверка…');
+    if (!c.gistId) { const g = await gistFind(); if (!g) return cloudPush(); c.gistId = g.id; setSyncCfg(c); }
+    const r = await gistRead(c.gistId), ls = c.lastSync || 0, remoteNew = (r.updated || 0) > ls, localNew = (S.updated || 0) > ls;
+    if (remoteNew && localNew) {
+      if (confirm('Данные изменены на другом устройстве, и здесь тоже есть изменения. ОК — взять данные из облака (текущие сохранятся в снимок). Отмена — оставить локальные и перезаписать облако.')) { applyRemote(r); c.lastSync = S.updated; setSyncCfg(c); showSync('☁ загружено ' + stamp()); }
+      else await cloudPush();
+    } else if (remoteNew) { applyRemote(r); c.lastSync = S.updated; setSyncCfg(c); showSync('☁ обновлено из облака ' + stamp()); }
+    else if (localNew) await cloudPush();
+    else showSync('☁ синхронизировано');
+  } catch (e) { showSync('☁ нет связи: ' + e.message, true); }
+}
+function dataExtra() {
+  const c = syncCfg(), sn = snaps();
+  const fd = FIN.map(([k, l]) => `<div class="field"><label>${l}</label><input class="num w" data-act="set-findef" data-key="${k}" value="${esc(S.finDefaults[k])}"></div>`).join('');
+  const cloud = c.token ? `<p class="hint" style="margin-top:0">Подключено. ${esc(syncMsg)}</p><label class="hint"><input type="checkbox" data-act="sync-auto" ${c.auto !== false ? 'checked' : ''}> отправлять изменения автоматически</label><br><br>
+      <button class="btn pri" data-act="cloud-push">Отправить сейчас</button> <button class="btn" data-act="cloud-pull">Загрузить из облака</button> <button class="btn bad" data-act="cloud-off">Отключить</button>`
+    : `<p class="hint" style="margin-top:0">Данные сохраняются в ваш приватный Gist на GitHub и доступны с любого устройства. Подключение: 1) откройте <a href="https://github.com/settings/tokens/new?scopes=gist&description=stroysmeta" target="_blank" rel="noopener">создание токена</a> (галочка gist уже отмечена); 2) нажмите Generate token внизу страницы; 3) скопируйте токен и вставьте сюда. На другом устройстве сделайте то же — данные подтянутся сами. Токен хранится только в этом браузере, никому его не показывайте.</p>
+      <div class="fields"><div class="field"><label>Токен GitHub</label><input id="ghToken" type="password" style="width:300px" placeholder="ghp_…"></div><button class="btn pri" data-act="cloud-on">Подключить</button></div>`;
+  return `<div class="card"><div class="ch"><h3>Облако (GitHub Gist)</h3></div><div class="cb">${cloud}</div></div>
+  <div class="card"><div class="ch"><h3>Точки отката</h3><span class="hint">автоматически, последние 5</span></div>${sn.length ? `<table><tbody>${sn.map((x, i) => ({x, i})).reverse().map(({x, i}) => `<tr><td>${new Date(x.t).toLocaleString('ru-RU')}</td><td class="num"><button class="btn sm" data-act="restore-snap" data-i="${i}">Восстановить</button></td></tr>`).join('')}</tbody></table>` : '<div class="empty">Появятся после первых изменений.</div>'}</div>
+  <div class="card"><div class="ch"><h3>Итог сметы по умолчанию для новых объектов</h3></div><div class="cb"><div class="fields">${fd}</div></div></div>`;
 }
 
 /* ================= ДЕЙСТВИЯ ================= */
@@ -504,12 +617,30 @@ const H = {
   'del-comp': el => { compOwner(el).components.splice(+el.dataset.i, 1); commit(); },
 
   'sel-obj': el => { ui.objId = el.dataset.id; Object.keys(curObj().sel).forEach(id => ui.pexp.add(id)); render(true); },
-  'add-obj': () => { const n = prompt('Название объекта:'); if (!n || !n.trim()) return; const o = {id:uid(), name:n.trim(), note:'', values:{}, sel:{}, pick:{}, extra:[]};
+  'add-obj': () => { const n = prompt('Название объекта:'); if (!n || !n.trim()) return; const o = {id:uid(), name:n.trim(), note:'', values:{}, rooms:[], fin:Object.assign({}, S.finDefaults), sel:{}, pick:{}, extra:[]};
     S.objects.push(o); ui.objId = o.id; save(); render(true); },
   'del-obj': () => { if (confirm('Удалить объект целиком?')) { S.objects = S.objects.filter(o => o.id !== ui.objId); ui.objId = null; commit(); } },
   'set-obj': el => { curObj()[el.dataset.f] = el.value; commit(); },
   'set-value': el => { curObj().values[el.dataset.key] = el.value.trim(); commit(); },
   'add-param': newParam,
+  'add-room': () => { const n = val('rName'); if (!n) return; curObj().rooms.push({id:uid(), name:n, l:num(val('rL')), w:num(val('rW')), h:num(val('rH')) || 2.7, open:num(val('rO'))}); commit(); },
+  'set-room': el => { const r = byId(curObj().rooms, el.dataset.id), f = el.dataset.f; r[f] = f === 'name' ? el.value.trim() : num(el.value); commit(); },
+  'del-room': el => { const o = curObj(), id = el.dataset.id; o.rooms = o.rooms.filter(r => r.id !== id);
+    Object.values(o.sel).forEach(x => { if (x.rooms) { x.rooms = x.rooms.filter(i => i !== id); if (!x.rooms.length) delete x.rooms; } }); commit(); },
+  'tgl-rp': el => { ui.rp = ui.rp === el.dataset.id ? '' : el.dataset.id; render(); },
+  'toggle-room': el => { const o = curObj(), s = o.sel[el.dataset.id], all = o.rooms.map(r => r.id); let cur = (s.rooms && s.rooms.length ? s.rooms : all).slice();
+    cur = el.checked ? [...new Set([...cur, el.dataset.room])] : cur.filter(i => i !== el.dataset.room);
+    if (cur.length) { if (cur.length === all.length) delete s.rooms; else s.rooms = cur; } commit(); },
+  'set-fin': el => { curObj().fin[el.dataset.key] = num(el.value); commit(); },
+  'set-findef': el => { S.finDefaults[el.dataset.key] = num(el.value); commit(); },
+  'cloud-on': () => { const t = val('ghToken'); if (t) cloudConnect(t); },
+  'cloud-push': () => cloudPush().then(() => render()),
+  'cloud-pull': async () => { if (!confirm('Заменить данные на странице данными из облака? Текущие сохранятся в снимок для отката.')) return;
+    try { const c = syncCfg(); applyRemote(await gistRead(c.gistId)); c.lastSync = S.updated; setSyncCfg(c); showSync('☁ загружено ' + stamp()); } catch (e) { alert('Не удалось загрузить: ' + e.message); } },
+  'cloud-off': () => { setSyncCfg({}); showSync(''); render(); },
+  'sync-auto': el => { const c = syncCfg(); c.auto = el.checked; setSyncCfg(c); render(); },
+  'restore-snap': el => { const arr = snaps(), x = arr[+el.dataset.i]; if (!x || !confirm('Вернуть данные на ' + new Date(x.t).toLocaleString('ru-RU') + '? Текущие сохранятся в снимок.')) return;
+    snap(true); migrate(JSON.parse(x.d)); S.updated = Date.now(); ui.objId = null; ui.stageId = null; commit(); },
   'tgl-pick': el => { const id = el.dataset.id; ui.pexp.has(id) ? ui.pexp.delete(id) : ui.pexp.add(id); render(); },
   'pick-toggle': el => { const o = curObj(); el.checked ? includeNode(o, el.dataset.id) : excludeNode(o, el.dataset.id); commit(); },
   'pick-variant': el => { includeNode(curObj(), el.dataset.id); commit(); },
@@ -538,7 +669,7 @@ const H = {
   'import-md': () => $('fileMd').click(),
   'export-json': () => download('stroysmeta-backup-' + new Date().toISOString().slice(0,10) + '.json', JSON.stringify(S, null, 1)),
   'import-json': () => $('fileImport').click(),
-  reset: () => { if (confirm('Все данные будут заменены примером. Продолжить?')) { S = seed(); ui.objId = null; ui.stageId = null; commit(); } }
+  reset: () => { if (confirm('Все данные будут заменены примером. Продолжить?')) { snap(true); S = seed(); ui.objId = null; ui.stageId = null; commit(); } }
 };
 const LIVE = {
   'tree-q': el => { ui.q = el.value; $('treebox').innerHTML = treeHtml('', 0, ui.q.toLowerCase()) || '<div class="empty">Ничего не найдено</div>'; },
@@ -551,6 +682,7 @@ document.addEventListener('input', e => { const el = e.target; if (el.dataset &&
 $('fileMd').addEventListener('change', e => { const fs = [...e.target.files]; e.target.value = ''; if (fs.length) importMd(fs); });
 $('fileImport').addEventListener('change', e => { const f = e.target.files[0]; if (!f) return;
   const r = new FileReader(); r.onload = () => { try { const d = JSON.parse(r.result); if (!d.materials || !d.stages || !d.objects) throw new Error('не тот файл');
-    migrate(d); ui.objId = null; ui.stageId = null; commit(); } catch (err) { alert('Не удалось загрузить: ' + err.message); } e.target.value = ''; };
+    snap(true); migrate(d); ui.objId = null; ui.stageId = null; commit(); } catch (err) { alert('Не удалось загрузить: ' + err.message); } e.target.value = ''; };
   r.readAsText(f); });
 render();
+cloudReconcile();

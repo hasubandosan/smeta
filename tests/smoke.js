@@ -1,0 +1,32 @@
+// Дымовой тест без браузера: npm i jsdom && node tests/smoke.js
+const {JSDOM} = require('jsdom'), fs = require('fs'), path = require('path');
+const root = path.join(__dirname, '..');
+const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8').replace(/<script src="https[^>]*><\/script>/, '').replace('<script src="app.js"></script>', '');
+const w = new JSDOM(html, {runScripts:'outside-only', url:'http://localhost/'}).window;
+w.alert = m => { throw new Error('alert: ' + m); }; w.confirm = () => true; w.prompt = () => 'Тест';
+w.eval(fs.readFileSync(path.join(root, 'app.js'), 'utf8') + ';window.X={get S(){return S},ui,evalExpr,objVars,totals,buyList,objRows,parseNote,migrate,seed};');
+const X = w.X, $ = s => w.document.querySelector(s);
+let fails = 0; const ok = (c, m) => { console.log((c ? 'OK   ' : 'FAIL ') + m); if (!c) fails++; };
+for (const t of ['stages','objects','materials','tools','composites','data']) { $(`[data-tab=${t}]`).click(); ok($('#main').innerHTML.length > 300, 'вкладка ' + t); }
+const empty = Object.create(null);
+ok(X.evalExpr('(2+3)*2', empty) === 10 && isNaN(X.evalExpr('2+', empty)), 'формулы');
+$('[data-tab=objects]').click(); $('[data-act=sel-obj]').click();
+const o = X.S.objects[0], V = X.objVars(o);
+ok(Math.abs(V.floor - 50) < 1e-9, 'пол из помещений = 50 м²');
+const T = X.totals(o);
+ok(T.total > 0 && Math.abs(T.grand - T.sub * 1.1) < 1e-6, 'итог: накладные 10% (сейчас ' + T.grand.toFixed(2) + ')');
+const pb = X.buyList(o).find(x => x.name.startsWith('Пескобетон'));
+ok(pb && Math.abs(pb.qty - 6270 * 1.05) < 1e-6, 'пескобетон 6270 кг + запас 5%');
+const dry = X.S.stages.find(s => s.name.startsWith('Сухая'));
+$(`[data-act=pick-variant][data-id="${dry.id}"]`).click();
+ok(X.objRows(X.S.objects[0]).every(r => !r.name.includes('Подготовка основания: демпферная')), 'ветвление: переключение на сухую стяжку');
+const semi = X.S.stages.find(s => s.name === 'Полусухая стяжка'), step = X.S.stages.find(s => s.parentId === semi.id && s.name.startsWith('2.'));
+$(`[data-act=pick-variant][data-id="${semi.id}"]`).click();
+const before = X.objRows(X.S.objects[0]).find(r => r.x.id === step.id).q;
+$(`[data-act=tgl-rp][data-id="${step.id}"]`).click(); $(`[data-act=toggle-room][data-id="${step.id}"][data-room="${X.S.objects[0].rooms[0].id}"]`).click();
+const after = X.objRows(X.S.objects[0]).find(r => r.x.id === step.id).q;
+ok(after < before && after > 0, 'этап привязан к части помещений: ' + before + ' → ' + after);
+const old = {materials:[{id:'m',name:'Ц',category:'material',unit:'кг',price:10,packQty:1}], stages:[{id:'a',parentId:'',name:'Шт',unit:'м2',price:1,notes:'## Ошибки\n- плохо',components:[]}], objects:[{id:'o',name:'К',params:[{id:'p',label:'П',key:'floor',value:'5'}], items:[{id:'i',type:'stage',refId:'a',qty:'floor*2'}]}]};
+X.migrate(JSON.parse(JSON.stringify(old)));
+ok(X.objRows(X.S.objects[0])[0].q === 10 && X.S.objects[0].rooms.length === 0, 'миграция старых данных');
+console.log(fails ? '\nПРОВАЛЕНО: ' + fails : '\nВсе проверки пройдены'); process.exit(fails ? 1 : 0);
