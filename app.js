@@ -1,6 +1,6 @@
 'use strict';
 /* ================= БАЗА ================= */
-const APP_VERSION = '0.5.0', KEY = 'stroysmeta:v3', SNAPKEY = 'stroysmeta:snaps', SYNCKEY = 'stroysmeta:sync';
+const APP_VERSION = '0.6.0', KEY = 'stroysmeta:v3', SNAPKEY = 'stroysmeta:snaps', SYNCKEY = 'stroysmeta:sync';
 const AUTO_KEYS = ['floor', 'ceiling', 'perimeter', 'walls'];   // считаются из помещений, если они заданы
 const FIN = [['reserve','Запас материалов, %'], ['overhead','Накладные расходы, %'], ['discount','Скидка, %'], ['vat','НДС, %']];
 const uid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-3);
