@@ -7,7 +7,7 @@
   let S, tab = 'object';
   function load() {
     try { const raw = localStorage.getItem(KEY); if (raw) { const d = JSON.parse(raw); localStorage.setItem(KEY + ':backup', raw); d.object = SM.model.migrate(d.object); return d; } } catch (e) { alert('Не удалось прочитать данные: ' + e.message + '. Данные не тронуты.'); throw e; }
-    return {object: SM.seeds.bathroom(), techs: [], materials: [], plan: [], fin: {waste: 0, reserve: 0}, bought: {}};
+    return {object: SM.seeds.bathroom(), techs: [], materials: [], plan: [], fin: {waste: 0, reserve: 0, overhead: 0, discount: 0, vat: 0}, bought: {}};
   }
   const save = () => localStorage.setItem(KEY, JSON.stringify(S));
   const get = p => p.split('.').reduce((o, k) => o[k], S);
@@ -30,7 +30,7 @@
       `<div class=card><h3>Короба и поверхности</h3>${o.surfaces.map((s, i) => s.kind === 'box' ? `<div>${esc(s.name)}: ${inp('object.surfaces.' + i + '.w', s.w, {n: 1, w: 50})} × ${inp('object.surfaces.' + i + '.l', s.l, {n: 1, w: 50})} × ${inp('object.surfaces.' + i + '.h', s.h, {n: 1, w: 50})} м ${s.assumed ? '<i class=hint>(размер взят условно — поправьте)</i>' : ''}</div>` : '').join('') || '<i class=hint>нет</i>'}</div>`;
   }
   function viewTechs() {
-    return '<h2>Технологии</h2><p class=hint>Технология = набор операций. У операции: единица, цена работы за единицу, формула объёма и материалы с расходом на единицу. В формулах: floor, ceiling, walls, perimeter, height, box и свои параметры технологии.</p>' +
+    return '<h2>Технологии</h2><button data-a=legacy>⬇ Взять технологии и материалы из старого приложения</button><p class=hint>Технология = набор операций. У операции: единица, цена работы за единицу, формула объёма и материалы с расходом на единицу. В формулах: floor, ceiling, walls, perimeter, height, box и свои параметры технологии.</p>' +
       S.techs.map((t, ti) => `<div class=card><h3>${inp('techs.' + ti + '.name', t.name, {w: 260})} ${btn('del', 'techs.' + ti, 'Удалить технологию')}</h3>
       <div>Параметры: ${(t.params || []).map((p, i) => inp(`techs.${ti}.params.${i}.key`, p.key, {w: 80, ph: 'имя'}) + '=' + inp(`techs.${ti}.params.${i}.def`, p.def, {n: 1, w: 50}) + btn('del', `techs.${ti}.params.${i}`, '✕')).join(' ')} ${btn('add', 'techs.' + ti + '.params', '＋ параметр', 'data-k=param')}</div>
       ${t.ops.map((op, oi) => `<div class=op><div>${inp(`techs.${ti}.ops.${oi}.name`, op.name, {w: 240, ph: 'Операция'})} ${btn('del', `techs.${ti}.ops.${oi}`, '✕')}</div>
@@ -50,7 +50,8 @@
       ${S.plan.map((p, i) => { const t = S.techs.find(x => x.id === p.techId); return `<div>• ${esc(t ? t.name : '(удалена)')} — ${esc((rooms.find(r => r[0] === p.roomId) || [0, '?'])[1])} ${btn('del', 'plan.' + i, '✕')}</div>`; }).join('')}</div>
       <table><tr><th>Операция<th>Объём<th>Работа, ₽</tr>${R.rows.map(r => `<tr><td>${esc(r.tech.name)} › ${esc(r.op.name)}<td>${r.q === null ? `<span class=warn>? ${r.missing.length ? 'нет: ' + esc(r.missing.join(', ')) : esc(r.error || '')}</span>` : f2(r.q) + ' ' + esc(r.op.unit)}<td class=n>${f2(r.work)}</tr>`).join('')}</table>
       <div class=card>Потери на подрезку, % ${inp('fin.waste', S.fin.waste, {n: 1, w: 50})} Запас, % ${inp('fin.reserve', S.fin.reserve, {n: 1, w: 50})}</div>
-      <div class=kpi><span>Работы <b>${f2(R.work)} ₽</b></span><span>Материалы (к закупке) <b>${f2(R.mat)} ₽</b></span><span>Итого <b>${f2(R.total)} ₽</b></span></div>${R.incomplete ? '<div class=warn>⚠ Часть данных неизвестна — итог неполный (отмечено «?»).</div>' : ''}`;
+      <div class=card>Накладные, % ${inp('fin.overhead', S.fin.overhead, {n: 1, w: 50})} Скидка, % ${inp('fin.discount', S.fin.discount, {n: 1, w: 50})} НДС, % ${inp('fin.vat', S.fin.vat, {n: 1, w: 50})}</div>
+      <div class=kpi><span>Работы <b>${f2(R.work)} ₽</b></span><span>Материалы (к закупке) <b>${f2(R.mat)} ₽</b></span><span>Подытог <b>${f2(R.sub)} ₽</b></span><span>Накладные <b>${f2(R.overhead)} ₽</b></span><span>Скидка <b>−${f2(R.discount)} ₽</b></span><span>НДС <b>${f2(R.vat)} ₽</b></span><span>К оплате <b>${f2(R.grand)} ₽</b></span></div>${R.incomplete ? '<div class=warn>⚠ Часть данных неизвестна — итог неполный (отмечено «?»).</div>' : ''}`;
   }
   function viewBuy() {
     const R = SM.est.compute(S), o = S.object;
@@ -69,6 +70,8 @@
     'wall-del'(p) { const [ri, i] = p.split('.').map(Number), g = S.object.geometry, r = g.rooms[ri], id = r.wallIds[i]; r.wallIds.splice(i, 1); if (!g.rooms.some(x => x.wallIds.includes(id))) g.walls = g.walls.filter(w => w.id !== id); },
     'open-add'(p) { const g = S.object.geometry; g.openings.push({id: uid(), roomId: g.rooms[+p].id, wallId: null, kind: 'дверь', w: null, h: null}); },
     'room-add'() { const g = S.object.geometry, ws = [0, 1, 2, 3].map(i => ({id: uid(), name: 'Стена ' + (i + 1), len: 3, turn: 90, material: ''})); g.walls.push(...ws); g.rooms.push({id: uid(), name: 'Помещение ' + (g.rooms.length + 1), height: 2.7, wallIds: ws.map(w => w.id)}); },
+    legacy() { let raw = null; try { raw = localStorage.getItem('stroysmeta:v3'); } catch (e) {} if (!raw) { alert('Старые данные в этом браузере не найдены (открывайте new.html с того же адреса, что и старое приложение).'); return; }
+      const r = SM.legacy.convert(JSON.parse(raw), S); S.materials.push(...r.materials); S.techs.push(...r.techs); alert('Перенесено: технологий ' + r.techs.length + ', материалов ' + r.materials.length + '. Старое приложение не изменено.'); },
     'plan-add'() { S.plan.push({id: uid(), techId: $('pt').value, roomId: $('pr').value, values: {}}); }
   };
   document.addEventListener('click', e => { const b = e.target.closest('button[data-a]'); if (!b) return; const a = A[b.dataset.a]; if (a) { a(b.dataset.p, b); save(); render(); } });

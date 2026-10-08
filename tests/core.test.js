@@ -54,3 +54,22 @@ t('смета: плитка на пол ванной, упаковки, купл
 t('короб: площадь покраски из размеров (0.6×0.4×2.7 → 5.4 м²)', () => { const o = SM.seeds.bathroom();
   const V = SM.est.vars({object: o}, {roomId: o.geometry.rooms[0].id}, {params: []}); near(V.box, 5.4); });
 console.log('Итого проверок: ' + n);
+
+/* ---- накладные/скидка/НДС и перенос из старого приложения ---- */
+require('../js/legacy.js');
+t('итог: подытог → накладные 10% → скидка 5% → НДС 20%', () => { const o = SM.seeds.bathroom();
+  const S = {object: o, materials: [], techs: [{id: 't', name: 'Т', params: [], ops: [{id: 'o', name: 'О', unit: 'м2', price: 1000, qty: '10', mats: []}]}], plan: [{id: 'p', techId: 't', roomId: o.geometry.rooms[0].id}], fin: {overhead: 10, discount: 5, vat: 20}, bought: {}};
+  const R = SM.est.compute(S); near(R.sub, 10000); near(R.overhead, 1000); near(R.discount, 550); near(R.vat, 2090); near(R.grand, 12540); });
+t('перенос из старого приложения: ветвление → технологии, композит раскрыт, параметры, без дублей', () => {
+  const old = {materials: [{id: 'm1', name: 'Песок', category: 'material', unit: 'кг', price: 280, packQty: 40}, {id: 'm2', name: 'Лента', category: 'material', unit: 'м', price: 400, packQty: 25}],
+    composites: [{id: 'c1', name: 'Смесь', unit: 'кг', components: [{refType: 'material', refId: 'm1', rate: '2'}]}], params: [{key: 'floor', def: 0}, {key: 'thickness', def: 60}],
+    stages: [{id: 'a', parentId: '', name: '2.5.6 Стяжка', mode: 'choice', unit: ''}, {id: 'b', parentId: 'a', name: 'Полусухая', mode: 'steps', unit: ''},
+      {id: 's1', parentId: 'b', name: 'Укладка', unit: 'м2', price: 350, vol: 'floor', components: [{refType: 'composite', refId: 'c1', rate: '19*thickness/10'}]},
+      {id: 's2', parentId: 'b', name: 'Лента', unit: 'м', price: 40, vol: 'perimeter', components: [{refType: 'material', refId: 'm2', rate: '1.05'}]},
+      {id: 'w', parentId: 'a', name: 'Мокрая', mode: 'steps', unit: ''}, {id: 's3', parentId: 'w', name: 'Заливка', unit: 'м2', price: 400, vol: 'floor', components: []}]};
+  const r = SM.legacy.convert(old, {techs: [], materials: []});
+  assert.strictEqual(r.materials.length, 2); assert.deepStrictEqual(r.techs.map(x => x.name), ['2.5.6 Стяжка › Полусухая', '2.5.6 Стяжка › Мокрая']);
+  const op = r.techs[0].ops[0]; assert.strictEqual(op.qty, 'floor'); assert.strictEqual(op.mats[0].matId, 'm1'); near(SM.evalExpr(op.mats[0].rate, {thickness: 60}).value, 2 * 19 * 6);
+  assert.deepStrictEqual(r.techs[0].params, [{key: 'thickness', def: 60}]); assert.strictEqual(r.techs[0].ops.length, 2);
+  assert.strictEqual(SM.legacy.convert(old, {techs: r.techs, materials: r.materials}).techs.length, 0); });
+console.log('Итого проверок: ' + n);

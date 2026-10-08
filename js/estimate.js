@@ -28,7 +28,8 @@
       const packs = +m.packQty > 0 ? SM.packs(rest, m.packQty) : null;
       return {id, m, base: a.base, waste, reserve, total, have, rest, packs, cost: packs !== null && !SM.isUnknown(m.price) ? packs * m.price : null, incomplete: a.unknown}; });
     const work = rows.reduce((s, r) => s + (r.work || 0), 0), mat = buy.reduce((s, b) => s + (b.cost || 0), 0);
-    return {rows, buy, work, mat, total: work + mat, incomplete: rows.some(r => r.q === null) || buy.some(b => b.incomplete || b.cost === null)};
+    const sub = work + mat, overhead = sub * num(f.overhead) / 100, afterOv = sub + overhead, discount = afterOv * num(f.discount) / 100, vat = (afterOv - discount) * num(f.vat) / 100;
+    return {rows, buy, work, mat, total: sub, sub, overhead, discount, vat, grand: afterOv - discount + vat, incomplete: rows.some(r => r.q === null) || buy.some(b => b.incomplete || b.cost === null)};
   };
 })(typeof window !== 'undefined' ? window : globalThis);
 if (typeof module !== 'undefined') module.exports = (typeof window !== 'undefined' ? window : globalThis).SM;
