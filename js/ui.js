@@ -6,8 +6,8 @@
   const f2 = n => (n === null || n === undefined || !isFinite(n) ? '?' : n.toLocaleString('ru-RU', {maximumFractionDigits: 2}));
   let S, tab = 'object';
   function load() {
-    try { const raw = localStorage.getItem(KEY); if (raw) { const d = JSON.parse(raw); localStorage.setItem(KEY + ':backup', raw); d.object = SM.model.migrate(d.object); d.library = d.library || SM.seeds.library(); return d; } } catch (e) { alert('Не удалось прочитать данные: ' + e.message + '. Данные не тронуты.'); throw e; }
-    return {object: SM.seeds.bathroom(), library: SM.seeds.library(), techs: [], materials: [], plan: [], fin: {waste: 0, reserve: 0, overhead: 0, discount: 0, vat: 0}, bought: {}};
+    try { const raw = localStorage.getItem(KEY); if (raw) { const d = JSON.parse(raw); localStorage.setItem(KEY + ':backup', raw); d.object = SM.model.migrate(d.object); d.library = SM.seeds.upgradeLibrary(d.library); d.routes = d.routes || []; return d; } } catch (e) { alert('Не удалось прочитать данные: ' + e.message + '. Данные не тронуты.'); throw e; }
+    return {object: SM.seeds.bathroom(), library: SM.seeds.library(), routes: [], techs: [], materials: [], plan: [], fin: {waste: 0, reserve: 0, overhead: 0, discount: 0, vat: 0}, bought: {}};
   }
   const save = () => localStorage.setItem(KEY, JSON.stringify(S));
   const get = p => p.split('.').reduce((o, k) => o[k], S);
@@ -81,10 +81,27 @@
         ${groups}
         <h4>Текущее состояние</h4>${kinds.map(k => o.surfaces.filter(x => x.roomId === r.id && x.kind === k).map(sf => `<div class=op><b>${esc(sf.name)}</b> ${(lib.layers[k] || []).map(([ly, lb]) => `<span style="white-space:nowrap">${esc(lb)}: <select data-a=state data-p="${sf.id}|${ly}">${TRI_OPTS.map(([v, t]) => `<option value=${v} ${SM.model.getState(o, sf.id, ly) === v ? 'selected' : ''}>${t}</option>`).join('')}</select></span>`).join(' ')}</div>`).join('')).join('')}</div>`; }).join('');
   }
-  const VIEWS = {object: viewObject, state: viewState, techs: viewTechs, materials: viewMaterials, estimate: viewEstimate, buy: viewBuy};
-  const TABS = [['object', 'Объект'], ['state', 'Состояние'], ['techs', 'Технологии'], ['materials', 'Материалы'], ['estimate', 'Смета'], ['buy', 'Закупка']];
+  const KINDS = [['floor', 'пол'], ['wall', 'стены'], ['ceiling', 'потолок'], ['box', 'короб']];
+  function viewRoutes() {
+    const lib = S.library, rooms = S.object.geometry.rooms, techOpt = pid => [['', '— без технологии —']].concat(S.techs.filter(t => t.processId === pid).map(t => [t.id, t.name]));
+    const editor = S.routes.map((r, i) => `<div class=card><h3>${inp('routes.' + i + '.name', r.name, {w: 240})} ${sel('routes.' + i + '.roomId', r.roomId, rooms.map(x => [x.id, x.name]))} ${btn('del', 'routes.' + i, 'Удалить')}</h3>
+      <b>Шаги</b>${(r.steps || []).map((st, j) => `<div class=mat>${sel(`routes.${i}.steps.${j}.processId`, st.processId, [['', '— процесс —']].concat(lib.processes.map(p => [p.id, p.name])))} ${sel(`routes.${i}.steps.${j}.techId`, st.techId || '', techOpt(st.processId))} ${btn('del', `routes.${i}.steps.${j}`, '✕')}</div>`).join('')}
+      ${btn('add', `routes.${i}.steps`, '＋ Шаг', 'data-k=rstep')}
+      <div><b>Допущения о состоянии после маршрута</b> <span class=hint>(например «оставляем стяжку»)</span></div>${(r.assume || []).map((a, j) => `<div class=mat>${sel(`routes.${i}.assume.${j}.kind`, a.kind, KINDS)} ${sel(`routes.${i}.assume.${j}.layer`, a.layer, [['', '— слой —']].concat(lib.layers[a.kind] || []))} = ${sel(`routes.${i}.assume.${j}.value`, a.value, TRI_OPTS)} ${btn('del', `routes.${i}.assume.${j}`, '✕')}</div>`).join('')}
+      ${btn('add', `routes.${i}.assume`, '＋ Допущение', 'data-k=rassume')}</div>`).join('');
+    const cmp = rooms.map(room => { const C = SM.routes.compareAll(S, room.id); if (!C.results.length) return '';
+      return `<div class=card><h3>Сравнение: ${esc(room.name)}</h3><table><tr><th><th>${C.results.map(x => esc(x.route.name) + (x.route.id === C.best ? ' ✓ дешевле' : '')).join('<th>')}</tr>
+        <tr><td>Работы, ₽<td class=n>${C.results.map(x => f2(x.work)).join('<td class=n>')}</tr><tr><td>Материалы, ₽<td class=n>${C.results.map(x => f2(x.mat)).join('<td class=n>')}</tr>
+        <tr><td><b>Итого, ₽</b><td class=n>${C.results.map(x => '<b>' + f2(x.grand) + '</b>' + (x.incomplete ? ' ⚠' : '')).join('<td class=n>')}</tr>
+        <tr><td>Дальше можно<td>${C.results.map(x => esc(x.ready.join(', ') || '—')).join('<td>')}</tr><tr><td>Заблокировано процессов<td class=n>${C.results.map(x => x.blocked).join('<td class=n>')}</tr></table>
+        <p class=hint>Итог = шаги маршрута + остальные работы плана, которые после него ещё нужны. ⚠ — часть данных неизвестна, сравнивать цену нельзя. Времени и закупленного заранее пока не учитываем.</p></div>`; }).join('');
+    return '<h2>Маршруты</h2><p class=hint>Маршрут — вариант решения одной задачи (например: оставить стяжку / отремонтировать / снести и залить новую). Сравнивается весь путь с последствиями, а не одна цена.</p>' + cmp + editor + btn('add', 'routes', '＋ Маршрут', 'data-k=route');
+  }
+  const VIEWS = {object: viewObject, state: viewState, routes: viewRoutes, techs: viewTechs, materials: viewMaterials, estimate: viewEstimate, buy: viewBuy};
+  const TABS = [['object', 'Объект'], ['state', 'Состояние'], ['routes', 'Маршруты'], ['techs', 'Технологии'], ['materials', 'Материалы'], ['estimate', 'Смета'], ['buy', 'Закупка']];
   function render() { const y = scrollY; $('nav').innerHTML = TABS.map(([k, t]) => `<button class="${k === tab ? 'on' : ''}" data-a=tab data-p=${k}>${t}</button>`).join(''); $('main').innerHTML = VIEWS[tab](); scrollTo(0, y); }
   const NEW = {tech: () => ({id: uid(), name: 'Новая технология', params: [], ops: []}), op: () => ({id: uid(), name: '', unit: 'м2', price: null, qty: '', mats: []}), mat: () => ({id: uid(), matId: '', rate: ''}),
+    route: () => ({id: uid(), name: 'Новый маршрут', roomId: S.object.geometry.rooms[0] ? S.object.geometry.rooms[0].id : '', steps: [], assume: []}), rstep: () => ({processId: '', techId: ''}), rassume: () => ({kind: 'floor', layer: '', value: 'YES'}),
     param: () => ({key: '', def: null}), material: () => ({id: uid(), name: 'Новый материал', unit: 'кг', packQty: null, price: null})};
   const A = {
     tab(p) { tab = p; }, del(p) { const k = p.split('.'), i = +k.pop(), arr = get(k.join('.')); const x = arr[i]; arr.splice(i, 1); if (k.join('.') === 'object.geometry.openings' || x === undefined) return; },

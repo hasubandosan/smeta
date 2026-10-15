@@ -3,11 +3,16 @@
   'use strict';
   const SM = root.SM = root.SM || {}, M = SM.model;
   SM.seeds = {
+    // Обновление сохранённой библиотеки без потерь: только ДОБАВЛЯЕТ недостающее по id, ничего не меняет и не удаляет.
+    upgradeLibrary(lib) { const base = SM.seeds.library(); if (!lib) return base; if ((lib.version || 0) >= base.version) return lib;
+      const L = JSON.parse(JSON.stringify(lib)); for (const k of ['processes', 'rules']) { L[k] = L[k] || []; for (const x of base[k]) if (!L[k].some(y => y.id === x.id)) L[k].push(x); }
+      for (const k of ['layers', 'goalNames', 'goals']) { L[k] = L[k] || {}; for (const key in base[k]) if (!(key in L[k])) L[k][key] = base[k][key]; }
+      L.version = base.version; return L; },
     // Демо-библиотека процессов и правил (ДАННЫЕ). Порядок процессов — только структура, без норм расхода/цен. Помечено как пример: пользователь может заменить.
     library() {
       const st = (kind, layer, is, quant) => ({state: {kind, layer, is, quant}}), E = (op, layer) => ({op, layer});
       const P = (id, name, surface, o) => Object.assign({id, name, surface, effects: []}, o);
-      return {version: 1, demo: true,
+      return {version: 2, demo: true,
         layers: {floor: [['existing_floor', 'Старый пол'], ['waterproofing', 'Гидроизоляция'], ['heating', 'Тёплый пол'], ['screed', 'Стяжка'], ['tile', 'Плитка']],
           wall: [['existing_tile', 'Старая плитка'], ['base_prepared', 'Основание подготовлено'], ['tile', 'Плитка'], ['painted', 'Окрашено']],
           ceiling: [['gkl', 'ГКЛ'], ['prepared', 'Подготовлено под краску'], ['painted', 'Окрашено']], box: [['base_prepared', 'Основание подготовлено'], ['painted', 'Окрашено']]},
@@ -20,6 +25,7 @@
           P('waterproof_floor', 'Гидроизоляция пола', 'floor', {after: ['demolish_floor'], effects: [E('ADD', 'waterproofing')]}),
           P('heating_water', 'Водяной тёплый пол', 'floor', {after: ['waterproof_floor'], effects: [E('ADD', 'heating')]}),
           P('screed_new', 'Новая стяжка', 'floor', {after: ['waterproof_floor', 'heating_water'], effects: [E('ADD', 'screed')]}),
+          P('repair_screed', 'Ремонт существующей стяжки', 'floor', {effects: [E('ADD', 'screed')]}),
           P('tile_floor_lay', 'Плитка на полу', 'floor', {after: ['screed_new'], effects: [E('ADD', 'tile')]}),
           P('demolish_wall_tile', 'Демонтаж старой плитки со стен', 'wall', {needed: st('wall', 'existing_tile', 'YES', 'any'), ask: 'На каких стенах осталась старая плитка? Отметьте «Старая плитка» у стен.', effects: [E('REMOVE', 'existing_tile')]}),
           P('prepare_wall_base', 'Подготовка основания стен', 'wall', {after: ['demolish_wall_tile'], effects: [E('ADD', 'base_prepared')]}),

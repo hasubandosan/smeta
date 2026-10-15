@@ -18,6 +18,8 @@
     return {obj, room, goals: obj.goals.filter(g => g.target === room.id || sid.has(g.target))}; };
   const effVal = e => (e.op === 'ADD' ? 'YES' : e.op === 'REMOVE' ? 'NO' : e.value);
 
+  R.effVal = effVal;
+
   // evalCond(cond, ctx, unk) -> 'T'|'F'|'U'; в unk попадают названия неизвестного
   R.evalCond = (c, ctx, unk) => {
     unk = unk || [];

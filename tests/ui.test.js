@@ -3,7 +3,7 @@
 const {JSDOM}=require('jsdom'),fs=require('fs'),R=require('path').join(__dirname,'..')+'/';
 let html=fs.readFileSync(R+'new.html','utf8').replace(/<script src="[^"]+"><\/script>/g,'');
 const w=new JSDOM(html,{runScripts:'outside-only',url:'http://localhost/'}).window;w.alert=m=>{throw new Error(m)};
-for(const f of ['core','geometry','model','seeds','rules','estimate','ui'])w.eval(fs.readFileSync(R+'js/'+f+'.js','utf8'));
+for(const f of ['core','geometry','model','seeds','rules','estimate','routes','ui'])w.eval(fs.readFileSync(R+'js/'+f+'.js','utf8'));
 const $=s=>w.document.querySelector(s),C=s=>$(s).click(),chg=(s,v)=>{const e=$(s);e.value=v;e.dispatchEvent(new w.Event('change',{bubbles:true}))};
 const tab=t=>C(`[data-a=tab][data-p=${t}]`);let ok=1;const A=(c,m)=>{console.log((c?'OK   ':'FAIL ')+m);if(!c)ok=0};
 A($('#main').textContent.includes('15,75'),'объект: пол 15,75');
@@ -17,4 +17,5 @@ tab('state');A($('#main').textContent.includes('Можно выполнить')&
 C('[data-a=complete]');A($('#main').textContent.includes('Готово'),'отметил выполненным → появилось «Готово»');
 tab('techs');chg('[data-p=\"techs.0.processId\"]','tile_floor_lay');tab('state');A($('#main').textContent.includes('В план'),'состояние: технология доступна для процесса');
 C('[data-a=plan-tech]');A($('#main').textContent.includes('В плане:'),'технология добавлена в план из процесса');
+tab('routes');C('[data-k=route]');C('[data-k=rstep]');A($('#main').textContent.includes('Шаги'),'маршруты: маршрут и шаг добавлены');
 process.exit(ok?0:1)

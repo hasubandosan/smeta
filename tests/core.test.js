@@ -111,3 +111,20 @@ t('смета учитывает состояние: выполненный пр
   near(SM.est.compute(S).work, 1575); assert.deepStrictEqual(SM.est.compute(S).skipped, []);
   SM.rules.complete(o, lib, rid, 'demolish_floor'); const R2 = SM.est.compute(S); near(R2.work, 0); assert.deepStrictEqual(R2.skipped, ['p']); });
 console.log('Итого проверок: ' + n);
+
+/* ---- сравнение маршрутов ---- */
+require('../js/routes.js');
+const rt = () => { const {o, lib, rid} = bath(), T = (id, pid, price) => ({id, name: id, processId: pid, params: [], ops: [{id: 'o' + id, name: 'Р', unit: 'м2', price, qty: 'floor', mats: []}]});
+  const S = {object: o, library: lib, materials: [], fin: {}, bought: {}, techs: [T('dem', 'demolish_floor', 100), T('new', 'screed_new', 500), T('rep', 'repair_screed', 150), T('tile', 'tile_floor_lay', 1000)],
+    plan: [{id: 'p', techId: 'tile', roomId: rid, processId: 'tile_floor_lay', values: {}}],
+    routes: [{id: 'A', name: 'Оставить', roomId: rid, steps: [], assume: [{kind: 'floor', layer: 'existing_floor', value: 'NO'}, {kind: 'floor', layer: 'screed', value: 'YES'}]},
+      {id: 'B', name: 'Ремонт', roomId: rid, steps: [{processId: 'repair_screed', techId: 'rep'}], assume: [{kind: 'floor', layer: 'existing_floor', value: 'NO'}]},
+      {id: 'C', name: 'Снести и новая', roomId: rid, steps: [{processId: 'demolish_floor', techId: 'dem'}, {processId: 'screed_new', techId: 'new'}], assume: []}]}; return {S, rid}; };
+t('маршруты: полная цена = шаги + нужное дальше; выбирается дешёвый', () => { const {S, rid} = rt(), C = SM.routes.compareAll(S, rid), by = id => C.results.find(x => x.route.id === id);
+  near(by('A').work, 15750); near(by('B').work, 15750 + 150 * 15.75); near(by('C').work, 15750 + 600 * 15.75); assert.strictEqual(C.best, 'A'); });
+t('маршруты: реальный объект не меняется; последствия видны', () => { const {S, rid} = rt(), f = S.object.surfaces.find(s => s.kind === 'floor').id, C = SM.routes.compareAll(S, rid);
+  assert.strictEqual(SM.model.getState(S.object, f, 'existing_floor'), 'YES'); assert.ok(C.results.find(x => x.route.id === 'A').ready.includes('Плитка на полу')); });
+t('маршруты: неизвестные данные → итог неполный, «дешевле» не объявляется', () => { const {S, rid} = rt(); S.techs[3].ops[0].qty = 'nope'; assert.strictEqual(SM.routes.compareAll(S, rid).best, null); });
+t('обновление библиотеки только добавляет, не затирает правки пользователя', () => { const old = SM.seeds.library(); old.version = 1; old.processes = old.processes.filter(p => p.id !== 'repair_screed'); old.processes[0].name = 'МОЁ НАЗВАНИЕ';
+  const L = SM.seeds.upgradeLibrary(old); assert.ok(L.processes.some(p => p.id === 'repair_screed')); assert.strictEqual(L.processes[0].name, 'МОЁ НАЗВАНИЕ'); assert.strictEqual(L.version, 2); });
+console.log('Итого проверок: ' + n);
