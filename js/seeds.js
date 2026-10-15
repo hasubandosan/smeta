@@ -3,6 +3,44 @@
   'use strict';
   const SM = root.SM = root.SM || {}, M = SM.model;
   SM.seeds = {
+    // Демо-библиотека процессов и правил (ДАННЫЕ). Порядок процессов — только структура, без норм расхода/цен. Помечено как пример: пользователь может заменить.
+    library() {
+      const st = (kind, layer, is, quant) => ({state: {kind, layer, is, quant}}), E = (op, layer) => ({op, layer});
+      const P = (id, name, surface, o) => Object.assign({id, name, surface, effects: []}, o);
+      return {version: 1, demo: true,
+        layers: {floor: [['existing_floor', 'Старый пол'], ['waterproofing', 'Гидроизоляция'], ['heating', 'Тёплый пол'], ['screed', 'Стяжка'], ['tile', 'Плитка']],
+          wall: [['existing_tile', 'Старая плитка'], ['base_prepared', 'Основание подготовлено'], ['tile', 'Плитка'], ['painted', 'Окрашено']],
+          ceiling: [['gkl', 'ГКЛ'], ['prepared', 'Подготовлено под краску'], ['painted', 'Окрашено']], box: [['base_prepared', 'Основание подготовлено'], ['painted', 'Окрашено']]},
+        goalNames: {tile_floor: 'плитка на полу', wall_tile: 'плитка на стенах', paint_wall_zone: 'окраска зоны стены', gkl_ceiling_paint: 'потолок из ГКЛ под покраску', paint: 'покраска'},
+        goals: {tile_floor: ['demolish_floor', 'screed_new', 'tile_floor_lay'], wall_tile: ['demolish_wall_tile', 'prepare_wall_base', 'tile_wall'], paint_wall_zone: ['prepare_wall_base', 'paint_wall_zone'],
+          gkl_ceiling_paint: ['gkl_ceiling', 'prep_ceiling', 'paint_ceiling'], paint: ['paint_box']},
+        processes: [
+          P('demolish_floor', 'Демонтаж старого пола', 'floor', {needed: st('floor', 'existing_floor', 'YES'), ask: 'Есть ли в помещении старый пол, который нужно демонтировать?',
+            effects: ['existing_floor', 'screed', 'waterproofing', 'heating', 'tile'].map(l => E('REMOVE', l))}),
+          P('waterproof_floor', 'Гидроизоляция пола', 'floor', {after: ['demolish_floor'], effects: [E('ADD', 'waterproofing')]}),
+          P('heating_water', 'Водяной тёплый пол', 'floor', {after: ['waterproof_floor'], effects: [E('ADD', 'heating')]}),
+          P('screed_new', 'Новая стяжка', 'floor', {after: ['waterproof_floor', 'heating_water'], effects: [E('ADD', 'screed')]}),
+          P('tile_floor_lay', 'Плитка на полу', 'floor', {after: ['screed_new'], effects: [E('ADD', 'tile')]}),
+          P('demolish_wall_tile', 'Демонтаж старой плитки со стен', 'wall', {needed: st('wall', 'existing_tile', 'YES', 'any'), ask: 'На каких стенах осталась старая плитка? Отметьте «Старая плитка» у стен.', effects: [E('REMOVE', 'existing_tile')]}),
+          P('prepare_wall_base', 'Подготовка основания стен', 'wall', {after: ['demolish_wall_tile'], effects: [E('ADD', 'base_prepared')]}),
+          P('tile_wall', 'Плитка на стенах', 'wall', {after: ['prepare_wall_base'], effects: [E('ADD', 'tile')]}),
+          P('paint_wall_zone', 'Окраска зоны стены', 'wall', {after: ['prepare_wall_base'], effects: [E('ADD', 'painted')]}),
+          P('gkl_ceiling', 'Потолок из ГКЛ', 'ceiling', {effects: [E('ADD', 'gkl')]}),
+          P('prep_ceiling', 'Подготовка потолка под краску', 'ceiling', {after: ['gkl_ceiling'], effects: [E('ADD', 'prepared')]}),
+          P('paint_ceiling', 'Покраска потолка', 'ceiling', {after: ['prep_ceiling'], effects: [E('ADD', 'painted')]}),
+          P('paint_box', 'Покраска короба', 'box', {requires: st('box', 'base_prepared', 'YES'), ask: 'Подготовлено ли основание короба под покраску?', blockedText: 'Основание короба не подготовлено', effects: [E('ADD', 'painted')]})],
+        rules: [
+          {id: 'wet_waterproof', name: 'Влажная зона', if: {all: [{room: {key: 'type', op: '==', value: 'bathroom'}}, {goal: 'tile_floor'}]},
+            then: [{do: 'REQUIRE', process: 'waterproof_floor', because: 'Гидроизоляция добавлена: помещение — влажная зона (ванная) и выбрана плитка на полу'}]},
+          {id: 'chosen_waterproof', name: 'Гидроизоляция выбрана', if: {param: {goal: 'tile_floor', key: 'waterproofing', op: '==', value: true}},
+            then: [{do: 'REQUIRE', process: 'waterproof_floor', because: 'Вы выбрали гидроизоляцию пола'}]},
+          {id: 'water_heating', name: 'Тёплый пол', if: {param: {goal: 'tile_floor', key: 'underfloorHeating', op: '==', value: 'water'}},
+            then: [{do: 'ADD_PROCESS', process: 'heating_water', because: 'Выбран водяной тёплый пол'}]},
+          {id: 'old_floor', name: 'Старый пол', ask: 'Есть ли в помещении старый пол?', if: {all: [{goal: 'tile_floor'}, {param: {goal: 'tile_floor', key: 'newScreed', op: '==', value: true}}, st('floor', 'existing_floor', 'YES')]},
+            then: [{do: 'ADD_PROCESS', process: 'demolish_floor', because: 'В помещении старый пол, а выбрана новая стяжка — старый нужно демонтировать'}]},
+          {id: 'screed_thick', name: 'Толщина стяжки', ask: 'Какая толщина новой стяжки, мм?', if: {param: {goal: 'tile_floor', key: 'screedThickness', op: '>', value: 50}},
+            then: [{do: 'RECOMMEND', text: 'Армирование стяжки', because: 'Толщина стяжки больше 50 мм'}]}]};
+    },
     // Тестовая ванная из ТЗ. Углы 90° по умолчанию (решение владельца, D7). Какая стена где — по порядку обхода из ТЗ.
     bathroom() {
       const o = M.newObject('Ванная (тестовый объект)'), g = o.geometry;

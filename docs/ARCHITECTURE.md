@@ -21,7 +21,7 @@
 | `model.js` | ✅ (ядро) | `newObject`, `getState/setState` (по умолчанию UNKNOWN), `addObservation`, `addGoal`, `derive`, `migrate` (`schemaVersion`, неизвестные поля сохраняются, схема из будущего — отказ) |
 | `seeds.js` | ✅ | `SM.seeds.bathroom()` — тестовая ванная из ТЗ как данные |
 | `tech.js` | ⏳ Фаза 3–4 | Process, Technology, Operation, граф связей, эффекты |
-| `rules.js` | ⏳ Фаза 5 | движок правил, объяснения, next-actions, вопросы |
+| `rules.js` | ✅ (срез) | `SM.rules.evalCond` (T/F/U), `plan(obj, lib, roomId)` → процессы со статусами, объяснения, вопросы; `complete()` применяет эффекты. Библиотека процессов и правил — данные в `S.library` (демо: `SM.seeds.library()`) |
 | `materials.js`, `units.js` | ⏳ Фаза 6 | requirement ≠ product, единицы, потери/резерв |
 | `estimate.js`, `purchase.js` | ⏳ Фаза 7 | смета-снимок, закупки required/purchased/used/to_buy |
 | `execution.js` | ⏳ Фаза 8 | статусы работ, факт, приёмка |

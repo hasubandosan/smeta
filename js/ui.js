@@ -6,8 +6,8 @@
   const f2 = n => (n === null || n === undefined || !isFinite(n) ? '?' : n.toLocaleString('ru-RU', {maximumFractionDigits: 2}));
   let S, tab = 'object';
   function load() {
-    try { const raw = localStorage.getItem(KEY); if (raw) { const d = JSON.parse(raw); localStorage.setItem(KEY + ':backup', raw); d.object = SM.model.migrate(d.object); return d; } } catch (e) { alert('Не удалось прочитать данные: ' + e.message + '. Данные не тронуты.'); throw e; }
-    return {object: SM.seeds.bathroom(), techs: [], materials: [], plan: [], fin: {waste: 0, reserve: 0, overhead: 0, discount: 0, vat: 0}, bought: {}};
+    try { const raw = localStorage.getItem(KEY); if (raw) { const d = JSON.parse(raw); localStorage.setItem(KEY + ':backup', raw); d.object = SM.model.migrate(d.object); d.library = d.library || SM.seeds.library(); return d; } } catch (e) { alert('Не удалось прочитать данные: ' + e.message + '. Данные не тронуты.'); throw e; }
+    return {object: SM.seeds.bathroom(), library: SM.seeds.library(), techs: [], materials: [], plan: [], fin: {waste: 0, reserve: 0, overhead: 0, discount: 0, vat: 0}, bought: {}};
   }
   const save = () => localStorage.setItem(KEY, JSON.stringify(S));
   const get = p => p.split('.').reduce((o, k) => o[k], S);
@@ -58,8 +58,24 @@
     return `<h2>Закупка</h2><table><tr><th>Материал<th>Нужно<th>+потери<th>+запас<th>Всего<th>Куплено<th>Докупить<th>Упак.<th>₽</tr>${R.buy.map(b => `<tr><td>${esc(b.m.name)}<td class=n>${f2(b.base)}<td class=n>${f2(b.waste)}<td class=n>${f2(b.reserve)}<td class=n>${f2(b.total)} ${esc(b.m.unit)}<td>${inp('bought.' + b.id, (S.bought || {})[b.id], {n: 1, w: 60})}<td class=n>${f2(b.rest)}<td class=n>${b.packs === null ? '<span class=warn>? нет данных об упаковке</span>' : b.packs}<td class=n>${f2(b.cost)}${b.incomplete ? ' ⚠' : ''}</tr>`).join('')}</table>
       <div class=card><b>Уже куплено (из описания объекта)</b>${o.purchased.map(p => `<div>• ${esc(p.name)}: ${p.qty === null ? '?' : p.qty} ${esc(p.unit)} <i class=hint>${esc(p.note || '')}</i></div>`).join('')}<p class=hint>Чтобы учесть купленное — впишите количество в колонку «Куплено» нужного материала выше.</p></div>`;
   }
-  const VIEWS = {object: viewObject, techs: viewTechs, materials: viewMaterials, estimate: viewEstimate, buy: viewBuy};
-  const TABS = [['object', 'Объект'], ['techs', 'Технологии'], ['materials', 'Материалы'], ['estimate', 'Смета'], ['buy', 'Закупка']];
+  const ST = {READY: ['Можно выполнить', '▶'], NEEDS_INFO: ['Требует уточнения', '?'], BLOCKED: ['Заблокировано', '⛔'], DONE: ['Готово', '✓']};
+  const TRI_OPTS = [['UNKNOWN', 'неизвестно'], ['YES', 'да'], ['NO', 'нет'], ['NOT_APPLICABLE', 'не применимо']];
+  function viewState() {
+    const o = S.object, lib = S.library;
+    return '<h2>Состояние и что дальше</h2><p class=hint>«Неизвестно» ≠ «нет»: система не считает неизвестное отсутствующим. Отметьте то, что знаете — список «что дальше» обновится.</p>' + o.geometry.rooms.map(r => {
+      const P = SM.rules.plan(o, lib, r.id), kinds = ['floor', 'wall', 'ceiling', 'box'].filter(k => o.surfaces.some(x => x.roomId === r.id && x.kind === k));
+      const groups = ['READY', 'NEEDS_INFO', 'BLOCKED', 'DONE'].map(k => { const L = P.items.filter(i => i.status === k); if (!L.length) return '';
+        return `<h4>${ST[k][0]} (${L.length})</h4>` + L.map(i => `<div class=op>${ST[k][1]} <b>${esc(i.name)}</b> ${k === 'READY' ? btn('complete', r.id + '|' + i.id, 'Отметить выполненным') : ''}
+          ${i.reasons.map(x => `<div class=warn>${esc(x)}</div>`).join('')}<div class=hint>Почему в плане: ${esc(i.why.join('; '))}</div></div>`).join(''); }).join('');
+      return `<div class=card><h3>${esc(r.name)}</h3>
+        <div><b>Что нужно получить:</b> ${o.goals.filter(g => g.target === r.id || o.surfaces.some(x => x.id === g.target && x.roomId === r.id)).map(g => esc((lib.goalNames || {})[g.result] || g.result)).join(', ') || '<i class=hint>не задано</i>'}</div>
+        ${P.questions.length ? '<h4>Нужно уточнить</h4>' + P.questions.map(q => `<div class=warn>? ${esc(q.text)} <i class=hint>(${esc(q.why)})</i></div>`).join('') : ''}
+        ${P.notes.map(n => `<div class=warn>${n.kind === 'WARN' ? '⚠' : '💡'} ${esc(n.text)} <i class=hint>— ${esc(n.because)}</i></div>`).join('')}
+        ${groups}
+        <h4>Текущее состояние</h4>${kinds.map(k => o.surfaces.filter(x => x.roomId === r.id && x.kind === k).map(sf => `<div class=op><b>${esc(sf.name)}</b> ${(lib.layers[k] || []).map(([ly, lb]) => `<span style="white-space:nowrap">${esc(lb)}: <select data-a=state data-p="${sf.id}|${ly}">${TRI_OPTS.map(([v, t]) => `<option value=${v} ${SM.model.getState(o, sf.id, ly) === v ? 'selected' : ''}>${t}</option>`).join('')}</select></span>`).join(' ')}</div>`).join('')).join('')}</div>`; }).join('');
+  }
+  const VIEWS = {object: viewObject, state: viewState, techs: viewTechs, materials: viewMaterials, estimate: viewEstimate, buy: viewBuy};
+  const TABS = [['object', 'Объект'], ['state', 'Состояние'], ['techs', 'Технологии'], ['materials', 'Материалы'], ['estimate', 'Смета'], ['buy', 'Закупка']];
   function render() { const y = scrollY; $('nav').innerHTML = TABS.map(([k, t]) => `<button class="${k === tab ? 'on' : ''}" data-a=tab data-p=${k}>${t}</button>`).join(''); $('main').innerHTML = VIEWS[tab](); scrollTo(0, y); }
   const NEW = {tech: () => ({id: uid(), name: 'Новая технология', params: [], ops: []}), op: () => ({id: uid(), name: '', unit: 'м2', price: null, qty: '', mats: []}), mat: () => ({id: uid(), matId: '', rate: ''}),
     param: () => ({key: '', def: null}), material: () => ({id: uid(), name: 'Новый материал', unit: 'кг', packQty: null, price: null})};
@@ -72,11 +88,13 @@
     'room-add'() { const g = S.object.geometry, ws = [0, 1, 2, 3].map(i => ({id: uid(), name: 'Стена ' + (i + 1), len: 3, turn: 90, material: ''})); g.walls.push(...ws); g.rooms.push({id: uid(), name: 'Помещение ' + (g.rooms.length + 1), height: 2.7, wallIds: ws.map(w => w.id)}); },
     legacy() { let raw = null; try { raw = localStorage.getItem('stroysmeta:v3'); } catch (e) {} if (!raw) { alert('Старые данные в этом браузере не найдены (открывайте new.html с того же адреса, что и старое приложение).'); return; }
       const r = SM.legacy.convert(JSON.parse(raw), S); S.materials.push(...r.materials); S.techs.push(...r.techs); alert('Перенесено: технологий ' + r.techs.length + ', материалов ' + r.materials.length + '. Старое приложение не изменено.'); },
+    complete(p) { const [rid, pid] = p.split('|'); try { SM.rules.complete(S.object, S.library, rid, pid); } catch (e) { alert(e.message); } },
     'plan-add'() { S.plan.push({id: uid(), techId: $('pt').value, roomId: $('pr').value, values: {}}); }
   };
   document.addEventListener('click', e => { const b = e.target.closest('button[data-a]'); if (!b) return; const a = A[b.dataset.a]; if (a) { a(b.dataset.p, b); save(); render(); } });
   document.addEventListener('change', e => { const t = e.target; if (t.dataset.a !== 'set') return; const k = t.dataset.p.split('.'), key = k.pop(), o = get(k.join('.') || '');
     let v = t.value.trim(); if (t.dataset.n) { v = v === '' ? null : parseFloat(v.replace(',', '.')); if (v !== null && !isFinite(v)) v = null; }
     if (k.length === 1 && k[0] === 'bought' || k[0] === 'bought') S.bought[key] = v; else o[key] = v; save(); render(); });
+  document.addEventListener('change', e => { const t = e.target; if (t.dataset.a !== 'state') return; const [id, layer] = t.dataset.p.split('|'); SM.model.setState(S.object, id, layer, t.value); save(); render(); });
   S = load(); save(); render();
 })();
