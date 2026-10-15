@@ -30,7 +30,7 @@
 | `exec.js` | ✅ (срез) | `SM.exec`: статусы пункта плана PLANNED→IN_PROGRESS→COMPLETED→ACCEPTED, чек-лист приёмки из заметок операций (`cat:'accept'`), COMPLETED применяет эффекты процесса |
 | `legacy.js` | ✅ | `SM.legacy.convert(старый S)` → технологии и материалы новой модели (ветвление → отдельные технологии, композиты раскрываются, без дублей по `legacyId`) |
 | `ui.js` + `new.html` | ✅ (срез) | новый интерфейс на новой модели; данные в `stroysmeta:model` (рядом копия `:backup`). Старый `index.html` не тронут |
-| `storage.js` | ⏳ | localStorage, `schemaVersion`, миграции, снимки, облако Gist (переезд из `app.js`) |
+| `storage.js` | ✅ | `SM.store`: load/save (`stroysmeta:model`, копия `:backup`), `normalize/parse` (миграция, отказ для схемы из будущего), точки отката (`:snaps`), `replace` (подмена данных только через точку отката), облако Gist (`cloud(ls, fetch)`: `check/push/adopt`, чистая `decide`), `sheets` для Excel. `ls` и `fetch` передаются снаружи — тестируется в Node |
 | `planner.js` | ⏳ Фаза 10 | SVG 2D-планировщик |
 
 ## Геометрия (принято)

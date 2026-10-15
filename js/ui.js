@@ -1,15 +1,17 @@
 /* Интерфейс новой модели (new.html). Только показ и вызов SM.*; расчёты — в js/estimate.js и js/geometry.js */
 (function () {
   'use strict';
-  const KEY = 'stroysmeta:model', $ = id => document.getElementById(id), uid = SM.uid;
+  const $ = id => document.getElementById(id), uid = SM.uid;
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
   const f2 = n => (n === null || n === undefined || !isFinite(n) ? '?' : n.toLocaleString('ru-RU', {maximumFractionDigits: 2}));
   let S, tab = 'object';
-  function load() {
-    try { const raw = localStorage.getItem(KEY); if (raw) { const d = JSON.parse(raw); localStorage.setItem(KEY + ':backup', raw); d.object = SM.model.migrate(d.object); d.library = SM.seeds.upgradeLibrary(d.library); d.routes = d.routes || []; return d; } } catch (e) { alert('Не удалось прочитать данные: ' + e.message + '. Данные не тронуты.'); throw e; }
-    return {object: SM.seeds.bathroom(), library: SM.seeds.library(), routes: [], techs: [], materials: [], plan: [], fin: {waste: 0, reserve: 0, overhead: 0, discount: 0, vat: 0}, bought: {}};
-  }
-  const save = () => localStorage.setItem(KEY, JSON.stringify(S));
+  function load() { try { return SM.store.load(localStorage).S; } catch (e) { alert('Не удалось прочитать данные: ' + e.message + '. Данные не тронуты.'); throw e; } }
+  let saveErr = false, syncT, cloudMsg = '';
+  const cfg = () => SM.store.cfg(localStorage), cloudApi = () => SM.store.cloud(localStorage, (u, o) => fetch(u, o)), stamp = () => new Date().toLocaleTimeString('ru-RU', {hour: '2-digit', minute: '2-digit'});
+  const save = () => { const r = SM.store.save(localStorage, S); if (!r.ok) { if (!saveErr) alert('Не удалось сохранить: ' + r.error + '. Скачайте копию во вкладке «Данные».'); saveErr = true; } else { saveErr = false; schedulePush(); } };
+  function schedulePush() { const c = cfg(); if (!c.token || !c.gistId || c.auto === false) return; clearTimeout(syncT); cloudMsg = '☁ …'; syncT = setTimeout(async () => {
+    try { await cloudApi().push(S); cloudMsg = '☁ сохранено ' + stamp(); } catch (e) { cloudMsg = e.conflict ? '☁ в облаке более новые данные — откройте вкладку «Данные»' : '☁ ошибка: ' + e.message; } paintSync(); }, 3000); }
+  function paintSync() { const el = $('sync'); if (el) el.textContent = cfg().token ? cloudMsg : ''; }
   const get = p => p.split('.').reduce((o, k) => o[k], S);
   const inp = (path, v, o = {}) => `<input ${o.n ? 'data-n=1 inputmode=decimal' : ''} data-a=set data-p="${path}" value="${esc(v)}" placeholder="${o.ph || ''}" style="width:${o.w || 90}px">`;
   const sel = (path, v, opts) => `<select data-a=set data-p="${path}">${opts.map(([k, t]) => `<option value="${esc(k)}" ${k === v ? 'selected' : ''}>${esc(t)}</option>`).join('')}</select>`;
@@ -111,9 +113,24 @@
           ${v.conditions.map(x => `<div class=hint>Условие: ${esc(x)}</div>`).join('')}${v.errors.map(x => `<div class=warn>Частая ошибка: ${esc(x)}</div>`).join('')}
           ${v.checklist.length ? '<div><b>Приёмка</b></div>' + v.checklist.map(c => `<label style="display:block"><input type=checkbox data-a=check data-p="${it.id}|${c.id}" ${c.done ? 'checked' : ''} ${v.status === 'PLANNED' || v.status === 'ACCEPTED' ? 'disabled' : ''}> ${esc(c.text)}</label>`).join('') : ''}</div>`; }).join('') + '</div>'; }).join('') || '<i class=hint>План пуст — добавьте технологии в план во вкладке «Состояние».</i>';
   }
-  const VIEWS = {object: viewObject, state: viewState, routes: viewRoutes, works: viewWorks, techs: viewTechs, materials: viewMaterials, estimate: viewEstimate, buy: viewBuy};
-  const TABS = [['object', 'Объект'], ['state', 'Состояние'], ['routes', 'Маршруты'], ['works', 'Работы'], ['techs', 'Технологии'], ['materials', 'Материалы'], ['estimate', 'Смета'], ['buy', 'Закупка']];
-  function render() { const y = scrollY; $('nav').innerHTML = TABS.map(([k, t]) => `<button class="${k === tab ? 'on' : ''}" data-a=tab data-p=${k}>${t}</button>`).join(''); $('main').innerHTML = VIEWS[tab](); scrollTo(0, y); }
+  function download(name, text, type) { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], {type: type || 'application/json'})); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000); }
+  function viewData() {
+    const c = cfg(), sn = SM.store.snaps(localStorage);
+    const cloud = c.token ? `<p class=hint>Подключено. ${esc(cloudMsg)}</p><div><button data-a=cloud-check>Сверить</button> <button data-a=cloud-push>Отправить сейчас</button> <button data-a=cloud-pull>Загрузить из облака</button> <button data-a=cloud-auto>Автоотправка: ${c.auto !== false ? 'вкл' : 'выкл'}</button> <button data-a=cloud-off>Отключить</button></div>
+        <p class=hint>Облачные данные никогда не заменяются без вашего подтверждения; перед загрузкой из облака текущие данные сохраняются в точку отката.</p>`
+      : `<p class=hint>Данные сохраняются в ваш приватный Gist на GitHub и доступны с любого устройства. Подключение: 1) откройте <a href="https://github.com/settings/tokens/new?scopes=gist&description=stroysmeta" target=_blank rel=noopener style="color:var(--ac)">создание токена</a> (галочка gist уже отмечена); 2) нажмите Generate token внизу страницы; 3) скопируйте токен и вставьте сюда. Токен хранится только в этом браузере и не попадает в копии данных.</p>
+        <input id=ghToken type=password placeholder="ghp_…" style="width:300px"> <button data-a=cloud-on>Подключить</button>`;
+    return `<h2>Данные</h2>
+      <div class=card><h3>Копия на компьютер</h3><p class=hint>Весь проект одним файлом. Загрузка файла заменяет текущие данные, но перед этим автоматически делается точка отката.</p>
+        <button data-a=export-json>⬇ Скачать копию (JSON)</button> <button data-a=export-xlsx>⬇ Смета в Excel</button> <label>⬆ Загрузить копию: <input type=file accept=".json,application/json" data-a=import-json></label></div>
+      <div class=card><h3>Облако (GitHub Gist)</h3>${cloud}</div>
+      <div class=card><h3>Точки отката</h3><p class=hint>Делаются сами (не чаще раза в 5 минут, последние ${SM.store.MAX_SNAPS}) и перед любой заменой данных.</p>
+        ${sn.length ? '<table>' + sn.map((x, i) => [x, i]).reverse().map(([x, i]) => `<tr><td>${new Date(x.t).toLocaleString('ru-RU')}<td>${btn('restore-snap', i, 'Вернуть')}</tr>`).join('') + '</table>' : '<div class=hint>Появятся после первых изменений.</div>'}
+        ${btn('snap-now', '', 'Сделать точку отката сейчас')}</div>`;
+  }
+  const VIEWS = {object: viewObject, state: viewState, routes: viewRoutes, works: viewWorks, techs: viewTechs, materials: viewMaterials, estimate: viewEstimate, buy: viewBuy, data: viewData};
+  const TABS = [['object', 'Объект'], ['state', 'Состояние'], ['routes', 'Маршруты'], ['works', 'Работы'], ['techs', 'Технологии'], ['materials', 'Материалы'], ['estimate', 'Смета'], ['buy', 'Закупка'], ['data', 'Данные']];
+  function render() { const y = scrollY; $('nav').innerHTML = TABS.map(([k, t]) => `<button class="${k === tab ? 'on' : ''}" data-a=tab data-p=${k}>${t}</button>`).join('') + '<span id=sync class=hint style="padding:8px;white-space:nowrap"></span>'; paintSync(); $('main').innerHTML = VIEWS[tab](); scrollTo(0, y); }
   const NEW = {tech: () => ({id: uid(), name: 'Новая технология', params: [], ops: []}), op: () => ({id: uid(), name: '', unit: 'м2', price: null, qty: '', mats: []}), mat: () => ({id: uid(), matId: '', rate: ''}),
     route: () => ({id: uid(), name: 'Новый маршрут', roomId: S.object.geometry.rooms[0] ? S.object.geometry.rooms[0].id : '', steps: [], assume: []}), rstep: () => ({processId: '', techId: ''}), rassume: () => ({kind: 'floor', layer: '', value: 'YES'}),
     note: () => ({id: uid(), cat: 'accept', text: ''}),
@@ -133,13 +150,51 @@
     'w-start'(id) { try { SM.exec.start(S, S.plan.find(x => x.id === id)); } catch (e) { alert(e.message); } },
     'w-complete'(id) { try { SM.exec.complete(S, S.plan.find(x => x.id === id)); } catch (e) { alert(e.message); } },
     'w-accept'(id) { try { SM.exec.accept(S, S.plan.find(x => x.id === id)); } catch (e) { alert(e.message); } },
-    'plan-add'() { S.plan.push({id: uid(), techId: $('pt').value, roomId: $('pr').value, values: {}}); }
+    'plan-add'() { S.plan.push({id: uid(), techId: $('pt').value, roomId: $('pr').value, values: {}}); },
+    'export-json'() { download('stroysmeta_' + new Date().toISOString().slice(0, 10) + '.json', SM.store.toJson(S)); },
+    'export-xlsx'() { if (!window.XLSX) return alert('Библиотека Excel не загрузилась — нужен интернет.');
+      const wb = XLSX.utils.book_new(); for (const sh of SM.store.sheets(S)) { const ws = XLSX.utils.aoa_to_sheet(sh.rows); ws['!cols'] = sh.rows[0].map((_, j) => ({wch: Math.min(60, Math.max(8, ...sh.rows.map(r => String(r[j] == null ? '' : r[j]).length)))})); XLSX.utils.book_append_sheet(wb, ws, sh.name); }
+      XLSX.writeFile(wb, 'smeta_' + (S.object.name || 'object').replace(/[^\p{L}\d]+/gu, '_') + '.xlsx'); },
+    'snap-now'() { SM.store.snap(localStorage, S, true); },
+    'restore-snap'(p) { try { const x = SM.store.snaps(localStorage)[+p], d = SM.store.snapData(localStorage, +p);
+      if (confirm('Вернуть данные на состояние от ' + new Date(x.t).toLocaleString('ru-RU') + '? Текущие сохранятся в новую точку отката.')) S = SM.store.replace(localStorage, S, d); } catch (e) { alert(e.message); } },
+    'cloud-on'() { const token = $('ghToken').value.trim(); if (!token) return alert('Вставьте токен'); SM.store.setCfg(localStorage, {token, auto: true}); cloudCheck(true); },
+    'cloud-off'() { if (confirm('Отключить облако на этом устройстве? Данные в облаке и здесь останутся.')) { SM.store.setCfg(localStorage, {}); cloudMsg = ''; } },
+    'cloud-auto'() { const c = cfg(); c.auto = c.auto === false; SM.store.setCfg(localStorage, c); },
+    'cloud-check'() { cloudCheck(); }, 'cloud-push'() { cloudPush(); }, 'cloud-pull'() { cloudPull(); }
   };
-  document.addEventListener('click', e => { const b = e.target.closest('button[data-a]'); if (!b) return; const a = A[b.dataset.a]; if (a) { a(b.dataset.p, b); save(); render(); } });
+  const NOSAVE = new Set(['tab', 'export-json', 'export-xlsx', 'snap-now', 'restore-snap', 'cloud-on', 'cloud-off', 'cloud-auto', 'cloud-check', 'cloud-push', 'cloud-pull']);
+  /* Облако: pull и расхождения применяются только с подтверждением; перезапись облака — только если оно не менялось или по явному «ОК». */
+  async function cloudCheck(first) {
+    cloudMsg = '☁ проверка…'; paintSync(); const cl = cloudApi();
+    try { const r = await cl.check(S);
+      if (r.action === 'pushed') cloudMsg = '☁ сохранено ' + stamp();
+      else if (r.action === 'same') cloudMsg = '☁ синхронизировано';
+      else if (r.action === 'pull' || r.action === 'conflict') {
+        if (confirm((r.action === 'pull' ? 'В облаке более новые данные (изменены на другом устройстве). ' : 'В облаке и здесь разные данные. ') + 'ОК — взять данные из облака (текущие сохранятся в точку отката). Отмена — ничего не менять, облако не трогаем.')) { S = cl.adopt(S, r.remote); cloudMsg = '☁ загружено ' + stamp(); }
+        else cloudMsg = '☁ данные расходятся: выберите «Отправить сейчас» или «Загрузить из облака»'; }
+    } catch (e) { cloudMsg = '☁ ошибка: ' + e.message; if (first) { SM.store.setCfg(localStorage, {}); alert('Не удалось подключить: ' + e.message); } }
+    render(); }
+  async function cloudPush() { const cl = cloudApi();
+    try { await cl.push(S); cloudMsg = '☁ сохранено ' + stamp(); }
+    catch (e) { if (!e.conflict) cloudMsg = '☁ ошибка: ' + e.message;
+      else if (confirm('В облаке более новые данные. Перезаписать их текущими? Облачная копия будет потеряна.')) { try { await cl.push(S, {force: true}); cloudMsg = '☁ сохранено ' + stamp(); } catch (e2) { cloudMsg = '☁ ошибка: ' + e2.message; } }
+      else cloudMsg = '☁ облако не тронуто'; }
+    render(); }
+  async function cloudPull() { const cl = cloudApi(), c = cfg();
+    try { if (!c.gistId) throw new Error('облако не подключено'); const r = await cl.read(c.gistId);
+      if (confirm('Заменить данные здесь данными из облака? Текущие сохранятся в точку отката.')) { S = cl.adopt(S, r); cloudMsg = '☁ загружено ' + stamp(); } }
+    catch (e) { cloudMsg = '☁ ошибка: ' + e.message; }
+    render(); }
+  document.addEventListener('change', async e => { const t = e.target; if (t.dataset.a !== 'import-json' || !t.files[0]) return;
+    try { const next = SM.store.parse(await t.files[0].text());
+      if (confirm('Заменить текущие данные данными из файла «' + t.files[0].name + '»? Текущие сохранятся в точку отката.')) S = SM.store.replace(localStorage, S, next); } catch (err) { alert('Не удалось загрузить: ' + err.message); }
+    t.value = ''; render(); });
+  document.addEventListener('click', e => { const b = e.target.closest('button[data-a]'); if (!b) return; const a = A[b.dataset.a]; if (a) { a(b.dataset.p, b); if (!NOSAVE.has(b.dataset.a)) save(); render(); } });
   document.addEventListener('change', e => { const t = e.target; if (t.dataset.a !== 'set') return; const k = t.dataset.p.split('.'), key = k.pop(), o = get(k.join('.') || '');
     let v = t.value.trim(); if (t.dataset.n) { v = v === '' ? null : parseFloat(v.replace(',', '.')); if (v !== null && !isFinite(v)) v = null; }
     if (k.length === 1 && k[0] === 'bought' || k[0] === 'bought') S.bought[key] = v; else o[key] = v; save(); render(); });
   document.addEventListener('change', e => { const t = e.target; if (t.dataset.a !== 'state') return; const [id, layer] = t.dataset.p.split('|'); SM.model.setState(S.object, id, layer, t.value); save(); render(); });
   document.addEventListener('change', e => { const t = e.target; if (t.dataset.a !== 'check') return; const [id, nid] = t.dataset.p.split('|'); SM.exec.check(S.plan.find(x => x.id === id), nid, t.checked); save(); render(); });
-  S = load(); save(); render();
+  S = load(); SM.store.save(localStorage, S, {keepStamp: true}); render(); if (cfg().token) cloudCheck();
 })();
