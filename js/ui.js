@@ -29,6 +29,7 @@
       ${btn('open-add', ri, '＋ Проём')}</div>`; }).join('') + btn('room-add', '', '＋ Помещение') +
       `<div class=card><h3>Короба и поверхности</h3>${o.surfaces.map((s, i) => s.kind === 'box' ? `<div>${esc(s.name)}: ${inp('object.surfaces.' + i + '.w', s.w, {n: 1, w: 50})} × ${inp('object.surfaces.' + i + '.l', s.l, {n: 1, w: 50})} × ${inp('object.surfaces.' + i + '.h', s.h, {n: 1, w: 50})} м ${s.assumed ? '<i class=hint>(размер взят условно — поправьте)</i>' : ''}</div>` : '').join('') || '<i class=hint>нет</i>'}</div>`;
   }
+  const NOTE_CATS = [['cond', 'Условие'], ['error', 'Ошибка'], ['accept', 'Приёмка'], ['note', 'Заметка']];
   function viewTechs() {
     return '<h2>Технологии</h2><button data-a=legacy>⬇ Взять технологии и материалы из старого приложения</button><p class=hint>Технология = набор операций. У операции: единица, цена работы за единицу, формула объёма и материалы с расходом на единицу. В формулах: floor, ceiling, walls, perimeter, height, box и свои параметры технологии.</p>' +
       S.techs.map((t, ti) => `<div class=card><h3>${inp('techs.' + ti + '.name', t.name, {w: 260})} ${btn('del', 'techs.' + ti, 'Удалить технологию')}</h3>
@@ -37,7 +38,9 @@
       ${t.ops.map((op, oi) => `<div class=op><div>${inp(`techs.${ti}.ops.${oi}.name`, op.name, {w: 240, ph: 'Операция'})} ${btn('del', `techs.${ti}.ops.${oi}`, '✕')}</div>
         <div>ед. ${inp(`techs.${ti}.ops.${oi}.unit`, op.unit, {w: 50, ph: 'м2'})} цена ₽ ${inp(`techs.${ti}.ops.${oi}.price`, op.price, {n: 1, w: 70})} объём = ${inp(`techs.${ti}.ops.${oi}.qty`, op.qty, {w: 150, ph: 'floor'})}</div>
         ${(op.mats || []).map((m, mi) => `<div class=mat>${sel(`techs.${ti}.ops.${oi}.mats.${mi}.matId`, m.matId, matOpts())} расход на ед. ${inp(`techs.${ti}.ops.${oi}.mats.${mi}.rate`, m.rate, {w: 130, ph: '1.9 или формула'})} ${btn('del', `techs.${ti}.ops.${oi}.mats.${mi}`, '✕')}</div>`).join('')}
-        ${btn('add', `techs.${ti}.ops.${oi}.mats`, '＋ материал', 'data-k=mat')}</div>`).join('')}
+        ${btn('add', `techs.${ti}.ops.${oi}.mats`, '＋ материал', 'data-k=mat')}
+        ${(op.notes || []).map((n, ni) => `<div class=mat>${sel(`techs.${ti}.ops.${oi}.notes.${ni}.cat`, n.cat, NOTE_CATS)} ${inp(`techs.${ti}.ops.${oi}.notes.${ni}.text`, n.text, {w: 300})} ${btn('del', `techs.${ti}.ops.${oi}.notes.${ni}`, '✕')}</div>`).join('')}
+        ${btn('add', `techs.${ti}.ops.${oi}.notes`, '＋ условие / ошибка / приёмка', 'data-k=note')}</div>`).join('')}
       ${btn('add', 'techs.' + ti + '.ops', '＋ Операция', 'data-k=op')}</div>`).join('') + btn('add', 'techs', '＋ Технология', 'data-k=tech');
   }
   function viewMaterials() {
@@ -48,7 +51,7 @@
     const o = S.object, R = SM.est.compute(S);
     const rooms = o.geometry.rooms.map(r => [r.id, r.name]), techs = S.techs.map(t => [t.id, t.name]);
     return `<h2>Работы и смета</h2><div class=card><b>Что делаем:</b> ${techs.length ? `<select id=pt>${techs.map(([k, t]) => `<option value="${k}">${esc(t)}</option>`).join('')}</select> в <select id=pr>${rooms.map(([k, t]) => `<option value="${k}">${esc(t)}</option>`).join('')}</select> <button data-a=plan-add>Добавить в план</button>` : '<i class=hint>Сначала создайте технологию.</i>'}
-      ${S.plan.map((p, i) => { const t = S.techs.find(x => x.id === p.techId); return `<div>• ${esc(t ? t.name : '(удалена)')} — ${esc((rooms.find(r => r[0] === p.roomId) || [0, '?'])[1])} ${R.skipped.includes(p.id) ? '<i class=hint>(процесс уже выполнен или не нужен — в смету не входит)</i>' : ''} ${btn('del', 'plan.' + i, '✕')}</div>`; }).join('')}</div>
+      ${S.plan.map((p, i) => { const t = S.techs.find(x => x.id === p.techId); return `<div>• ${esc(t ? t.name : '(удалена)')} — ${esc((rooms.find(r => r[0] === p.roomId) || [0, '?'])[1])} ${R.skipped.includes(p.id) ? '<i class=hint>(процесс уже выполнен или не нужен — в смету не входит; чтобы учесть работу — переведите её в «В работе»)</i>' : ''} ${btn('del', 'plan.' + i, '✕')}</div>`; }).join('')}</div>
       <table><tr><th>Операция<th>Объём<th>Работа, ₽</tr>${R.rows.map(r => `<tr><td>${esc(r.tech.name)} › ${esc(r.op.name)}<td>${r.q === null ? `<span class=warn>? ${r.missing.length ? 'нет: ' + esc(r.missing.join(', ')) : esc(r.error || '')}</span>` : f2(r.q) + ' ' + esc(r.op.unit)}<td class=n>${f2(r.work)}</tr>`).join('')}</table>
       <div class=card>Потери на подрезку, % ${inp('fin.waste', S.fin.waste, {n: 1, w: 50})} Запас, % ${inp('fin.reserve', S.fin.reserve, {n: 1, w: 50})}</div>
       <div class=card>Накладные, % ${inp('fin.overhead', S.fin.overhead, {n: 1, w: 50})} Скидка, % ${inp('fin.discount', S.fin.discount, {n: 1, w: 50})} НДС, % ${inp('fin.vat', S.fin.vat, {n: 1, w: 50})}</div>
@@ -97,11 +100,23 @@
         <p class=hint>Итог = шаги маршрута + остальные работы плана, которые после него ещё нужны. ⚠ — часть данных неизвестна, сравнивать цену нельзя. Времени и закупленного заранее пока не учитываем.</p></div>`; }).join('');
     return '<h2>Маршруты</h2><p class=hint>Маршрут — вариант решения одной задачи (например: оставить стяжку / отремонтировать / снести и залить новую). Сравнивается весь путь с последствиями, а не одна цена.</p>' + cmp + editor + btn('add', 'routes', '＋ Маршрут', 'data-k=route');
   }
-  const VIEWS = {object: viewObject, state: viewState, routes: viewRoutes, techs: viewTechs, materials: viewMaterials, estimate: viewEstimate, buy: viewBuy};
-  const TABS = [['object', 'Объект'], ['state', 'Состояние'], ['routes', 'Маршруты'], ['techs', 'Технологии'], ['materials', 'Материалы'], ['estimate', 'Смета'], ['buy', 'Закупка']];
+  function viewWorks() {
+    const o = S.object;
+    return '<h2>Работы</h2><p class=hint>Статусы: запланировано → в работе → выполнено → принято. «Выполнено» меняет состояние объекта. «Принято» — только после чек-листа приёмки (его пункты — заметки «Приёмка» у операций технологии).</p>' + o.geometry.rooms.map(r => {
+      const items = S.plan.filter(p => p.roomId === r.id); if (!items.length) return '';
+      return `<div class=card><h3>${esc(r.name)}</h3>` + items.map(it => { const v = SM.exec.view(S, it), t = S.techs.find(x => x.id === it.techId);
+        return `<div class=op><b>${esc(t ? t.name : '(удалена)')}</b> — ${SM.exec.LABEL[v.status]}
+          ${v.status === 'PLANNED' ? (v.canStart ? btn('w-start', it.id, 'Начать') : v.waits.map(x => `<div class=warn>⛔ ${esc(x)}</div>`).join('')) : ''}
+          ${v.status === 'IN_PROGRESS' ? btn('w-complete', it.id, 'Выполнено') : ''}${v.status === 'COMPLETED' ? btn('w-accept', it.id, 'Принять') : ''}
+          ${v.conditions.map(x => `<div class=hint>Условие: ${esc(x)}</div>`).join('')}${v.errors.map(x => `<div class=warn>Частая ошибка: ${esc(x)}</div>`).join('')}
+          ${v.checklist.length ? '<div><b>Приёмка</b></div>' + v.checklist.map(c => `<label style="display:block"><input type=checkbox data-a=check data-p="${it.id}|${c.id}" ${c.done ? 'checked' : ''} ${v.status === 'PLANNED' || v.status === 'ACCEPTED' ? 'disabled' : ''}> ${esc(c.text)}</label>`).join('') : ''}</div>`; }).join('') + '</div>'; }).join('') || '<i class=hint>План пуст — добавьте технологии в план во вкладке «Состояние».</i>';
+  }
+  const VIEWS = {object: viewObject, state: viewState, routes: viewRoutes, works: viewWorks, techs: viewTechs, materials: viewMaterials, estimate: viewEstimate, buy: viewBuy};
+  const TABS = [['object', 'Объект'], ['state', 'Состояние'], ['routes', 'Маршруты'], ['works', 'Работы'], ['techs', 'Технологии'], ['materials', 'Материалы'], ['estimate', 'Смета'], ['buy', 'Закупка']];
   function render() { const y = scrollY; $('nav').innerHTML = TABS.map(([k, t]) => `<button class="${k === tab ? 'on' : ''}" data-a=tab data-p=${k}>${t}</button>`).join(''); $('main').innerHTML = VIEWS[tab](); scrollTo(0, y); }
   const NEW = {tech: () => ({id: uid(), name: 'Новая технология', params: [], ops: []}), op: () => ({id: uid(), name: '', unit: 'м2', price: null, qty: '', mats: []}), mat: () => ({id: uid(), matId: '', rate: ''}),
     route: () => ({id: uid(), name: 'Новый маршрут', roomId: S.object.geometry.rooms[0] ? S.object.geometry.rooms[0].id : '', steps: [], assume: []}), rstep: () => ({processId: '', techId: ''}), rassume: () => ({kind: 'floor', layer: '', value: 'YES'}),
+    note: () => ({id: uid(), cat: 'accept', text: ''}),
     param: () => ({key: '', def: null}), material: () => ({id: uid(), name: 'Новый материал', unit: 'кг', packQty: null, price: null})};
   const A = {
     tab(p) { tab = p; }, del(p) { const k = p.split('.'), i = +k.pop(), arr = get(k.join('.')); const x = arr[i]; arr.splice(i, 1); if (k.join('.') === 'object.geometry.openings' || x === undefined) return; },
@@ -115,6 +130,9 @@
     complete(p) { const [rid, pid] = p.split('|'); try { SM.rules.complete(S.object, S.library, rid, pid); } catch (e) { alert(e.message); } },
     'plan-tech'(p) { const [rid, pid] = p.split('|'), el = document.querySelector(`[data-tp="${p}"]`); if (!el) return;
       if (!S.plan.some(x => x.roomId === rid && x.processId === pid && x.techId === el.value)) S.plan.push({id: uid(), techId: el.value, roomId: rid, processId: pid, values: {}}); },
+    'w-start'(id) { try { SM.exec.start(S, S.plan.find(x => x.id === id)); } catch (e) { alert(e.message); } },
+    'w-complete'(id) { try { SM.exec.complete(S, S.plan.find(x => x.id === id)); } catch (e) { alert(e.message); } },
+    'w-accept'(id) { try { SM.exec.accept(S, S.plan.find(x => x.id === id)); } catch (e) { alert(e.message); } },
     'plan-add'() { S.plan.push({id: uid(), techId: $('pt').value, roomId: $('pr').value, values: {}}); }
   };
   document.addEventListener('click', e => { const b = e.target.closest('button[data-a]'); if (!b) return; const a = A[b.dataset.a]; if (a) { a(b.dataset.p, b); save(); render(); } });
@@ -122,5 +140,6 @@
     let v = t.value.trim(); if (t.dataset.n) { v = v === '' ? null : parseFloat(v.replace(',', '.')); if (v !== null && !isFinite(v)) v = null; }
     if (k.length === 1 && k[0] === 'bought' || k[0] === 'bought') S.bought[key] = v; else o[key] = v; save(); render(); });
   document.addEventListener('change', e => { const t = e.target; if (t.dataset.a !== 'state') return; const [id, layer] = t.dataset.p.split('|'); SM.model.setState(S.object, id, layer, t.value); save(); render(); });
+  document.addEventListener('change', e => { const t = e.target; if (t.dataset.a !== 'check') return; const [id, nid] = t.dataset.p.split('|'); SM.exec.check(S.plan.find(x => x.id === id), nid, t.checked); save(); render(); });
   S = load(); save(); render();
 })();

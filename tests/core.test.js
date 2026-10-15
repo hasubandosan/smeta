@@ -128,3 +128,25 @@ t('маршруты: неизвестные данные → итог непол
 t('обновление библиотеки только добавляет, не затирает правки пользователя', () => { const old = SM.seeds.library(); old.version = 1; old.processes = old.processes.filter(p => p.id !== 'repair_screed'); old.processes[0].name = 'МОЁ НАЗВАНИЕ';
   const L = SM.seeds.upgradeLibrary(old); assert.ok(L.processes.some(p => p.id === 'repair_screed')); assert.strictEqual(L.processes[0].name, 'МОЁ НАЗВАНИЕ'); assert.strictEqual(L.version, 2); });
 console.log('Итого проверок: ' + n);
+
+/* ---- выполнение и приёмка ---- */
+require('../js/exec.js');
+const ex = () => { const {o, lib, rid} = bath(), N = (cat, text) => ({id: 'n' + text, cat, text});
+  const S = {object: o, library: lib, materials: [], fin: {}, bought: {}, techs: [{id: 'dem', name: 'Демонтаж', processId: 'demolish_floor', params: [], ops: [{id: 'o', name: 'Снос', unit: 'м2', price: 100, qty: 'floor', mats: [],
+      notes: [N('accept', 'Основание очищено'), N('accept', 'Мусор вывезен'), N('cond', 'Отключить воду'), N('error', 'Повредили трубы')]}]},
+    {id: 'wp', name: 'Гидроизоляция', processId: 'waterproof_floor', params: [], ops: [{id: 'o2', name: 'Обмазка', unit: 'м2', price: 50, qty: 'floor', mats: [], notes: []}]}],
+    plan: [{id: 'a', techId: 'dem', roomId: rid, processId: 'demolish_floor'}, {id: 'b', techId: 'wp', roomId: rid, processId: 'waterproof_floor'}]}; return {S, o, rid}; };
+t('работы: нельзя начать, пока процесс заблокирован; причина названа', () => { const {S} = ex(), b = S.plan[1], v = SM.exec.view(S, b);
+  assert.ok(!v.canStart && v.waits[0].includes('Демонтаж')); assert.throws(() => SM.exec.start(S, b), /Сначала/); });
+t('работы: начать → выполнить меняет состояние и открывает следующую работу', () => { const {S, o} = ex(), [a, b] = S.plan;
+  SM.exec.start(S, a); assert.throws(() => SM.exec.start(S, a)); SM.exec.complete(S, a); assert.strictEqual(a.status, 'COMPLETED');
+  assert.strictEqual(SM.model.getState(o, o.surfaces.find(s => s.kind === 'floor').id, 'existing_floor'), 'NO'); assert.ok(SM.exec.view(S, b).canStart); });
+t('приёмка: ACCEPTED только после чек-листа; условия и ошибки видны', () => { const {S} = ex(), a = S.plan[0], v = SM.exec.view(S, a);
+  assert.deepStrictEqual([v.conditions, v.errors, v.checklist.length], [['Отключить воду'], ['Повредили трубы'], 2]);
+  assert.throws(() => SM.exec.accept(S, a), /только выполненную/); SM.exec.start(S, a); SM.exec.complete(S, a);
+  assert.throws(() => SM.exec.accept(S, a), /Не пройдена приёмка/); SM.exec.check(a, 'nОснование очищено', true); assert.throws(() => SM.exec.accept(S, a));
+  SM.exec.check(a, 'nМусор вывезен', true); SM.exec.accept(S, a); assert.strictEqual(a.status, 'ACCEPTED'); });
+t('смета: выполненная работа остаётся в смете (история), запланированная при выполненном процессе — нет', () => { const {S, o, rid} = ex(), a = S.plan[0];
+  SM.rules.complete(o, S.library, rid, 'demolish_floor'); assert.deepStrictEqual(SM.est.compute(S).skipped, ['a']);
+  a.status = 'COMPLETED'; assert.deepStrictEqual(SM.est.compute(S).skipped, []); near(SM.est.compute(S).rows.find(r => r.item === a).work, 1575); });
+console.log('Итого проверок: ' + n);
