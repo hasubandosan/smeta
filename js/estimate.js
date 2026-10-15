@@ -13,8 +13,10 @@
     return Object.assign(V, item.values || {});
   };
   E.compute = S => {
-    const rows = [], need = new Map(), f = S.fin || {};
-    for (const item of S.plan) { const tech = S.techs.find(t => t.id === item.techId); if (!tech) continue; const V = E.vars(S, item, tech);
+    const rows = [], need = new Map(), f = S.fin || {}, skipped = [], cache = {};
+    const isDone = item => { if (!item.processId || !S.library || !SM.rules) return false;
+      try { const P = cache[item.roomId] || (cache[item.roomId] = SM.rules.plan(S.object, S.library, item.roomId)), it = P.items.find(x => x.id === item.processId); return !!it && it.status === 'DONE'; } catch (e) { return false; } };
+    for (const item of S.plan) { const tech = S.techs.find(t => t.id === item.techId); if (!tech) continue; if (isDone(item)) { skipped.push(item.id); continue; } const V = E.vars(S, item, tech);
       for (const op of tech.ops) {
         const q = SM.evalExpr(op.qty, V), row = {item, tech, op, q: q.ok ? q.value : null, missing: q.unknown || [], error: q.error, work: null, mats: []};
         if (q.ok) row.work = q.value * num(op.price);
@@ -29,7 +31,7 @@
       return {id, m, base: a.base, waste, reserve, total, have, rest, packs, cost: packs !== null && !SM.isUnknown(m.price) ? packs * m.price : null, incomplete: a.unknown}; });
     const work = rows.reduce((s, r) => s + (r.work || 0), 0), mat = buy.reduce((s, b) => s + (b.cost || 0), 0);
     const sub = work + mat, overhead = sub * num(f.overhead) / 100, afterOv = sub + overhead, discount = afterOv * num(f.discount) / 100, vat = (afterOv - discount) * num(f.vat) / 100;
-    return {rows, buy, work, mat, total: sub, sub, overhead, discount, vat, grand: afterOv - discount + vat, incomplete: rows.some(r => r.q === null) || buy.some(b => b.incomplete || b.cost === null)};
+    return {skipped, rows, buy, work, mat, total: sub, sub, overhead, discount, vat, grand: afterOv - discount + vat, incomplete: rows.some(r => r.q === null) || buy.some(b => b.incomplete || b.cost === null)};
   };
 })(typeof window !== 'undefined' ? window : globalThis);
 if (typeof module !== 'undefined') module.exports = (typeof window !== 'undefined' ? window : globalThis).SM;

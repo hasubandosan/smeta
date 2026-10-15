@@ -15,4 +15,6 @@ tab('buy');A(/\b2\s?800\b/.test($('#main').textContent)||true,'закупка о
 tab('object');chg('[data-p="object.geometry.walls.0.len"]','3.6');A($('#main').textContent.includes('не замкнут'),'изменил стену → контур не замкнут, предупреждение');
 tab('state');A($('#main').textContent.includes('Можно выполнить')&&$('#main').textContent.includes('Гидроизоляция пола'),'состояние: что можно/заблокировано');
 C('[data-a=complete]');A($('#main').textContent.includes('Готово'),'отметил выполненным → появилось «Готово»');
+tab('techs');chg('[data-p=\"techs.0.processId\"]','tile_floor_lay');tab('state');A($('#main').textContent.includes('В план'),'состояние: технология доступна для процесса');
+C('[data-a=plan-tech]');A($('#main').textContent.includes('В плане:'),'технология добавлена в план из процесса');
 process.exit(ok?0:1)

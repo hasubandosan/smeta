@@ -104,3 +104,10 @@ t('FORBID, RECOMMEND и пользовательская библиотека р
     {id: 'r1', if: {room: {key: 'type', op: 'in', value: ['bathroom', 'kitchen']}}, then: [{do: 'ADD_PROCESS', process: 'x', because: 'b'}, {do: 'FORBID', process: 'x', because: 'нельзя'}, {do: 'WARN', text: 'w', because: 'b'}]}]};
   const P = SM.rules.plan(o, lib, rid); assert.strictEqual(P.items[0].status, 'BLOCKED'); assert.ok(P.items[0].reasons[0].includes('нельзя')); assert.strictEqual(P.notes.length, 1); });
 console.log('Итого проверок: ' + n);
+
+t('смета учитывает состояние: выполненный процесс не попадает в смету, невыполненный попадает', () => { const {o, lib, rid} = bath();
+  const S = {object: o, library: lib, materials: [], techs: [{id: 't', name: 'Демонтаж', processId: 'demolish_floor', params: [], ops: [{id: 'o', name: 'Снос', unit: 'м2', price: 100, qty: 'floor', mats: []}]}],
+    plan: [{id: 'p', techId: 't', roomId: rid, processId: 'demolish_floor', values: {}}], fin: {}, bought: {}};
+  near(SM.est.compute(S).work, 1575); assert.deepStrictEqual(SM.est.compute(S).skipped, []);
+  SM.rules.complete(o, lib, rid, 'demolish_floor'); const R2 = SM.est.compute(S); near(R2.work, 0); assert.deepStrictEqual(R2.skipped, ['p']); });
+console.log('Итого проверок: ' + n);
