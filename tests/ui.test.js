@@ -3,7 +3,7 @@
 const {JSDOM}=require('jsdom'),fs=require('fs'),R=require('path').join(__dirname,'..')+'/';
 let html=fs.readFileSync(R+'new.html','utf8').replace(/<script src="[^"]+"><\/script>/g,'');
 const w=new JSDOM(html,{runScripts:'outside-only',url:'http://localhost/'}).window;w.alert=m=>{throw new Error(m)};
-for(const f of ['core','geometry','model','seeds','rules','estimate','routes','exec','storage','ui'])w.eval(fs.readFileSync(R+'js/'+f+'.js','utf8'));
+for(const f of ['core','geometry','model','seeds','rules','estimate','routes','exec','fact','storage','ui'])w.eval(fs.readFileSync(R+'js/'+f+'.js','utf8'));
 const $=s=>w.document.querySelector(s),C=s=>$(s).click(),chg=(s,v)=>{const e=$(s);e.value=v;e.dispatchEvent(new w.Event('change',{bubbles:true}))};
 const tab=t=>C(`[data-a=tab][data-p=${t}]`);let ok=1;const A=(c,m)=>{console.log((c?'OK   ':'FAIL ')+m);if(!c)ok=0};
 A($('#main').textContent.includes('15,75'),'объект: пол 15,75');
@@ -24,4 +24,8 @@ const u0=JSON.parse(w.localStorage.getItem('stroysmeta:model')).updated;tab('sta
 C('[data-a=snap-now]');A(!!$('[data-a=restore-snap]'),'точка отката создаётся и появляется в списке');
 w.confirm=()=>true;const before=JSON.parse(w.localStorage.getItem('stroysmeta:model')).techs.length;tab('techs');C('[data-k=tech]');tab('data');C('[data-a=restore-snap]');tab('techs');A(JSON.parse(w.localStorage.getItem('stroysmeta:model')).techs.length===before,'откат вернул данные на момент точки');
 A(JSON.parse(w.localStorage.getItem('stroysmeta:model:snaps')).length>=2,'перед откатом сделана точка текущих данных');
+tab('estimate');C('[data-a=approve]');A($('#main').textContent.includes('Утверждённые сметы')&&$('#main').textContent.includes('Совпадает с текущей сметой'),'смета: снимок утверждён и совпадает с текущей');
+tab('works');const stBtn=$('[data-a=w-start]');A(!!stBtn,'работы: есть работа, которую можно начать');if(stBtn){stBtn.click();A(!!$('[data-a=fact]'),'работы: после начала появляется ввод факта');
+const fi=$('[data-a=fact][data-p$="|qty"]');chg('[data-a=fact][data-p$="|qty"]','20');A(JSON.parse(w.localStorage.getItem('stroysmeta:model')).plan.some(p=>p.fact&&Object.values(p.fact.ops).some(o=>o.qty===20)),'факт сохраняется в проекте');
+tab('buy');A($('#main').textContent.includes('Израсходовано')&&$('#main').textContent.includes('Остаток'),'закупка: колонки израсходовано и остаток');}
 process.exit(ok?0:1)

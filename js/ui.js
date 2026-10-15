@@ -57,11 +57,19 @@
       <table><tr><th>Операция<th>Объём<th>Работа, ₽</tr>${R.rows.map(r => `<tr><td>${esc(r.tech.name)} › ${esc(r.op.name)}<td>${r.q === null ? `<span class=warn>? ${r.missing.length ? 'нет: ' + esc(r.missing.join(', ')) : esc(r.error || '')}</span>` : f2(r.q) + ' ' + esc(r.op.unit)}<td class=n>${f2(r.work)}</tr>`).join('')}</table>
       <div class=card>Потери на подрезку, % ${inp('fin.waste', S.fin.waste, {n: 1, w: 50})} Запас, % ${inp('fin.reserve', S.fin.reserve, {n: 1, w: 50})}</div>
       <div class=card>Накладные, % ${inp('fin.overhead', S.fin.overhead, {n: 1, w: 50})} Скидка, % ${inp('fin.discount', S.fin.discount, {n: 1, w: 50})} НДС, % ${inp('fin.vat', S.fin.vat, {n: 1, w: 50})}</div>
-      <div class=kpi><span>Работы <b>${f2(R.work)} ₽</b></span><span>Материалы (к закупке) <b>${f2(R.mat)} ₽</b></span><span>Подытог <b>${f2(R.sub)} ₽</b></span><span>Накладные <b>${f2(R.overhead)} ₽</b></span><span>Скидка <b>−${f2(R.discount)} ₽</b></span><span>НДС <b>${f2(R.vat)} ₽</b></span><span>К оплате <b>${f2(R.grand)} ₽</b></span></div>${R.incomplete ? '<div class=warn>⚠ Часть данных неизвестна — итог неполный (отмечено «?»).</div>' : ''}`;
+      <div class=kpi><span>Работы <b>${f2(R.work)} ₽</b></span><span>Материалы (к закупке) <b>${f2(R.mat)} ₽</b></span><span>Подытог <b>${f2(R.sub)} ₽</b></span><span>Накладные <b>${f2(R.overhead)} ₽</b></span><span>Скидка <b>−${f2(R.discount)} ₽</b></span><span>НДС <b>${f2(R.vat)} ₽</b></span><span>К оплате <b>${f2(R.grand)} ₽</b></span></div>${R.incomplete ? '<div class=warn>⚠ Часть данных неизвестна — итог неполный (отмечено «?»).</div>' : ''}
+      <div class=card><h3>Утверждённые сметы</h3><p class=hint>Снимок сметы на момент утверждения; потом не меняется. Сравнивается с текущей сметой. Факт выполнения хранится отдельно (вкладка «Работы»).</p>
+        <input id=an placeholder="название (необязательно)" style="width:220px"> <button data-a=approve>Утвердить текущую смету</button>${(S.approved || []).slice().reverse().map(sn => approvedView(sn)).join('')}</div>`;
+  }
+  function approvedView(sn) {
+    const c = SM.fact.compare(S, sn), same = !c.changes.length && c.dGrand === 0;
+    return `<div class=op><b>${esc(sn.name)}</b> <span class=hint>${new Date(sn.t).toLocaleString('ru-RU')}</span> — к оплате ${f2(sn.grand)} ₽ (работы ${f2(sn.work)}, материалы ${f2(sn.mat)}) ${sn.incomplete ? '<span class=warn>⚠ была неполной</span>' : ''}
+      <div class=hint>${same ? 'Совпадает с текущей сметой.' : (c.comparable ? 'Текущая смета отличается на ' + sg(c.dGrand) + ' ₽ к оплате.' : 'Итог сравнить нельзя: в одной из смет есть неизвестные данные.')}</div>
+      ${c.changes.map(x => `<div class=mat>${x.kind === 'added' ? '＋ добавлено: ' + esc(x.name) + ' ' + f2(x.to) + ' ₽' : x.kind === 'removed' ? '− убрано: ' + esc(x.name) + ' (было ' + f2(x.from) + ' ₽)' : '≠ ' + esc(x.name) + ': ' + f2(x.fromQ) + ' → ' + f2(x.toQ) + ' ед., ' + f2(x.from) + ' → ' + f2(x.to) + ' ₽'}</div>`).join('')}</div>`;
   }
   function viewBuy() {
-    const R = SM.est.compute(S), o = S.object;
-    return `<h2>Закупка</h2><table><tr><th>Материал<th>Нужно<th>+потери<th>+запас<th>Всего<th>Куплено<th>Докупить<th>Упак.<th>₽</tr>${R.buy.map(b => `<tr><td>${esc(b.m.name)}<td class=n>${f2(b.base)}<td class=n>${f2(b.waste)}<td class=n>${f2(b.reserve)}<td class=n>${f2(b.total)} ${esc(b.m.unit)}<td>${inp('bought.' + b.id, (S.bought || {})[b.id], {n: 1, w: 60})}<td class=n>${f2(b.rest)}<td class=n>${b.packs === null ? '<span class=warn>? нет данных об упаковке</span>' : b.packs}<td class=n>${f2(b.cost)}${b.incomplete ? ' ⚠' : ''}</tr>`).join('')}</table>
+    const R = SM.est.compute(S), o = S.object, STK = new Map(SM.fact.stock(S).map(k => [k.id, k]));
+    return `<h2>Закупка</h2><table><tr><th>Материал<th>Нужно<th>+потери<th>+запас<th>Всего<th>Куплено<th>Израсходовано<th>Остаток<th>Докупить<th>Упак.<th>₽</tr>${R.buy.map(b => { const k = STK.get(b.id) || {}; return `<tr><td>${esc(b.m.name)}<td class=n>${f2(b.base)}<td class=n>${f2(b.waste)}<td class=n>${f2(b.reserve)}<td class=n>${f2(b.total)} ${esc(b.m.unit)}<td>${inp('bought.' + b.id, (S.bought || {})[b.id], {n: 1, w: 60})}<td class=n>${f2(k.used)}<td class=n>${f2(k.left)}${k.over ? ' <span class=warn>⚠ больше, чем куплено</span>' : ''}<td class=n>${f2(b.rest)}<td class=n>${b.packs === null ? '<span class=warn>? нет данных об упаковке</span>' : b.packs}<td class=n>${f2(b.cost)}${b.incomplete ? ' ⚠' : ''}</tr>`; }).join('')}</table>${STK.size > R.buy.length ? '<div class=card><b>Расход материалов вне сметы</b>' + [...STK.values()].filter(k => !R.buy.some(b => b.id === k.id)).map(k => `<div>• ${esc(k.m.name)}: израсходовано ${f2(k.used)} ${esc(k.m.unit)}, куплено ${f2(k.have)}, остаток ${f2(k.left)}</div>`).join('') + '</div>' : ''}
       <div class=card><b>Уже куплено (из описания объекта)</b>${o.purchased.map(p => `<div>• ${esc(p.name)}: ${p.qty === null ? '?' : p.qty} ${esc(p.unit)} <i class=hint>${esc(p.note || '')}</i></div>`).join('')}<p class=hint>Чтобы учесть купленное — впишите количество в колонку «Куплено» нужного материала выше.</p></div>`;
   }
   const ST = {READY: ['Можно выполнить', '▶'], NEEDS_INFO: ['Требует уточнения', '?'], BLOCKED: ['Заблокировано', '⛔'], DONE: ['Готово', '✓']};
@@ -102,15 +110,24 @@
         <p class=hint>Итог = шаги маршрута + остальные работы плана, которые после него ещё нужны. ⚠ — часть данных неизвестна, сравнивать цену нельзя. Времени и закупленного заранее пока не учитываем.</p></div>`; }).join('');
     return '<h2>Маршруты</h2><p class=hint>Маршрут — вариант решения одной задачи (например: оставить стяжку / отремонтировать / снести и залить новую). Сравнивается весь путь с последствиями, а не одна цена.</p>' + cmp + editor + btn('add', 'routes', '＋ Маршрут', 'data-k=route');
   }
+  const sg = n => (n > 0 ? '+' : '') + f2(n);
+  function factBlock(it, rep, st) {
+    const x = rep.items.find(i => i.item === it); if (!x) return '';
+    const dis = st === 'ACCEPTED' ? 'disabled' : '', fi = (p, v) => `<input data-a=fact data-n=1 inputmode=decimal data-p="${p}" value="${esc(v)}" style="width:70px" ${dis}>`;
+    return `<div><b>Факт</b> <span class=hint>(пусто = неизвестно; после приёмки закрыт)</span></div><table><tr><th>Операция<th>План, объём<th>Факт, объём<th>План, ₽<th>Факт, ₽</tr>${x.ops.map(o => `<tr><td>${esc(o.op.name)}<td class=n>${f2(o.planQty)} ${esc(o.op.unit)}<td>${fi(it.id + '|op|' + o.op.id + '|qty', o.factQty)}<td class=n>${f2(o.planWork)}<td>${fi(it.id + '|op|' + o.op.id + '|cost', o.factCost)}${o.dCost !== null ? ` <span class=hint>${sg(o.dCost)}</span>` : ''}</tr>`).join('')}</table>
+      ${x.mats.length ? `<table><tr><th>Материал<th>По плану<th>Израсходовано</tr>${x.mats.map(m => `<tr><td>${esc(m.mat ? m.mat.name : '(удалён)')}<td class=n>${f2(m.planNeed)} ${esc(m.mat ? m.mat.unit : '')}<td>${fi(it.id + '|mat|' + m.matId, m.used)}</tr>`).join('')}</table>` : ''}`;
+  }
   function viewWorks() {
+    const REP = SM.fact.report(S);
     const o = S.object;
-    return '<h2>Работы</h2><p class=hint>Статусы: запланировано → в работе → выполнено → принято. «Выполнено» меняет состояние объекта. «Принято» — только после чек-листа приёмки (его пункты — заметки «Приёмка» у операций технологии).</p>' + o.geometry.rooms.map(r => {
+    return '<h2>Работы</h2><p class=hint>Статусы: запланировано → в работе → выполнено → принято. «Выполнено» меняет состояние объекта. «Принято» — только после чек-листа приёмки (его пункты — заметки «Приёмка» у операций технологии). Факт (объём, стоимость, расход материалов) вносится после начала работы и не меняет смету.</p>' + (REP.items.length ? `<div class=card><b>Итого по начатым работам:</b> план ${f2(REP.planWork)} ₽, факт ${f2(REP.factWork)} ₽ (стоимость указана по ${REP.costKnown} операциям)${REP.incomplete ? `<div class=warn>⚠ У выполненных работ не указана стоимость по ${REP.costMissing} операциям — факт неполный.</div>` : ''}</div>` : '') + o.geometry.rooms.map(r => {
       const items = S.plan.filter(p => p.roomId === r.id); if (!items.length) return '';
       return `<div class=card><h3>${esc(r.name)}</h3>` + items.map(it => { const v = SM.exec.view(S, it), t = S.techs.find(x => x.id === it.techId);
         return `<div class=op><b>${esc(t ? t.name : '(удалена)')}</b> — ${SM.exec.LABEL[v.status]}
           ${v.status === 'PLANNED' ? (v.canStart ? btn('w-start', it.id, 'Начать') : v.waits.map(x => `<div class=warn>⛔ ${esc(x)}</div>`).join('')) : ''}
           ${v.status === 'IN_PROGRESS' ? btn('w-complete', it.id, 'Выполнено') : ''}${v.status === 'COMPLETED' ? btn('w-accept', it.id, 'Принять') : ''}
           ${v.conditions.map(x => `<div class=hint>Условие: ${esc(x)}</div>`).join('')}${v.errors.map(x => `<div class=warn>Частая ошибка: ${esc(x)}</div>`).join('')}
+          ${v.status !== 'PLANNED' ? factBlock(it, REP, v.status) : ''}
           ${v.checklist.length ? '<div><b>Приёмка</b></div>' + v.checklist.map(c => `<label style="display:block"><input type=checkbox data-a=check data-p="${it.id}|${c.id}" ${c.done ? 'checked' : ''} ${v.status === 'PLANNED' || v.status === 'ACCEPTED' ? 'disabled' : ''}> ${esc(c.text)}</label>`).join('') : ''}</div>`; }).join('') + '</div>'; }).join('') || '<i class=hint>План пуст — добавьте технологии в план во вкладке «Состояние».</i>';
   }
   function download(name, text, type) { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], {type: type || 'application/json'})); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000); }
@@ -151,6 +168,7 @@
     'w-complete'(id) { try { SM.exec.complete(S, S.plan.find(x => x.id === id)); } catch (e) { alert(e.message); } },
     'w-accept'(id) { try { SM.exec.accept(S, S.plan.find(x => x.id === id)); } catch (e) { alert(e.message); } },
     'plan-add'() { S.plan.push({id: uid(), techId: $('pt').value, roomId: $('pr').value, values: {}}); },
+    approve() { SM.fact.approve(S, $('an') ? $('an').value : ''); },
     'export-json'() { download('stroysmeta_' + new Date().toISOString().slice(0, 10) + '.json', SM.store.toJson(S)); },
     'export-xlsx'() { if (!window.XLSX) return alert('Библиотека Excel не загрузилась — нужен интернет.');
       const wb = XLSX.utils.book_new(); for (const sh of SM.store.sheets(S)) { const ws = XLSX.utils.aoa_to_sheet(sh.rows); ws['!cols'] = sh.rows[0].map((_, j) => ({wch: Math.min(60, Math.max(8, ...sh.rows.map(r => String(r[j] == null ? '' : r[j]).length)))})); XLSX.utils.book_append_sheet(wb, ws, sh.name); }
@@ -186,6 +204,8 @@
       if (confirm('Заменить данные здесь данными из облака? Текущие сохранятся в точку отката.')) { S = cl.adopt(S, r); cloudMsg = '☁ загружено ' + stamp(); } }
     catch (e) { cloudMsg = '☁ ошибка: ' + e.message; }
     render(); }
+  document.addEventListener('change', e => { const t = e.target; if (t.dataset.a !== 'fact') return; const [id, kind, x, field] = t.dataset.p.split('|'), it = S.plan.find(p => p.id === id), v = t.value.trim().replace(',', '.');
+    try { if (kind === 'op') SM.fact.setOp(it, x, field, v); else SM.fact.setMat(it, x, v); } catch (err) { alert(err.message); } save(); render(); });
   document.addEventListener('change', async e => { const t = e.target; if (t.dataset.a !== 'import-json' || !t.files[0]) return;
     try { const next = SM.store.parse(await t.files[0].text());
       if (confirm('Заменить текущие данные данными из файла «' + t.files[0].name + '»? Текущие сохранятся в точку отката.')) S = SM.store.replace(localStorage, S, next); } catch (err) { alert('Не удалось загрузить: ' + err.message); }

@@ -9,14 +9,14 @@
 
   St.memStorage = () => { const m = {}; return {getItem: k => (k in m ? m[k] : null), setItem: (k, v) => { m[k] = String(v); }, removeItem: k => { delete m[k]; }, _m: m}; };
 
-  St.fresh = () => ({object: SM.seeds.bathroom(), library: SM.seeds.library(), routes: [], techs: [], materials: [], plan: [],
+  St.fresh = () => ({object: SM.seeds.bathroom(), library: SM.seeds.library(), routes: [], techs: [], materials: [], plan: [], approved: [],
     fin: {waste: 0, reserve: 0, overhead: 0, discount: 0, vat: 0}, bought: {}});
 
   /* Приводит проект к текущей схеме. Неизвестные поля сохраняются. Схема из будущего — ошибка (из model.migrate). */
   St.normalize = d => {
     if (!d || typeof d !== 'object' || Array.isArray(d) || !d.object || typeof d.object !== 'object') throw new Error('это не файл проекта «Помощника строителя»');
     d.object = SM.model.migrate(d.object); d.library = SM.seeds.upgradeLibrary(d.library);
-    for (const k of ['routes', 'techs', 'materials', 'plan']) if (!Array.isArray(d[k])) d[k] = [];
+    for (const k of ['routes', 'techs', 'materials', 'plan', 'approved']) if (!Array.isArray(d[k])) d[k] = [];
     d.fin = d.fin || {waste: 0, reserve: 0, overhead: 0, discount: 0, vat: 0}; d.bought = d.bought || {};
     return d;
   };
