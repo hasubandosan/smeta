@@ -10,7 +10,7 @@
   const procStatus = (S, item) => { if (!item.processId || !S.library) return null;
     try { return SM.rules.plan(S.object, S.library, item.roomId).items.find(x => x.id === item.processId) || null; } catch (e) { return null; } };
 
-  X.view = (S, item) => { const tech = S.techs.find(t => t.id === item.techId), ps = procStatus(S, item), checks = item.checks || {};
+  X.view = (S, item) => { const tech = (SM.ver ? SM.ver.resolve(S, item) : S.techs.find(t => t.id === item.techId)), ps = procStatus(S, item), checks = item.checks || {};
     const list = notes(tech, 'accept').map(n => ({id: n.id, text: n.text, done: !!checks[n.id]}));
     const st = item.status || 'PLANNED', waits = ps && ps.status !== 'READY' && ps.status !== 'DONE' ? ps.reasons.length ? ps.reasons : ['Процесс пока нельзя начинать'] : [];
     return {status: st, canStart: st === 'PLANNED' && !waits.length, waits, process: ps, checklist: list, allChecked: list.every(x => x.done),

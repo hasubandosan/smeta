@@ -9,7 +9,7 @@
 
   St.memStorage = () => { const m = {}; return {getItem: k => (k in m ? m[k] : null), setItem: (k, v) => { m[k] = String(v); }, removeItem: k => { delete m[k]; }, _m: m}; };
 
-  St.fresh = () => ({object: SM.seeds.bathroom(), library: SM.seeds.library(), routes: [], techs: [], materials: [], plan: [], approved: [],
+  St.fresh = () => ({object: SM.seeds.bathroom(), library: SM.seeds.library(), routes: [], techs: [], materials: [], plan: [], approved: [], techVersions: {},
     fin: {waste: 0, reserve: 0, overhead: 0, discount: 0, vat: 0}, bought: {}});
 
   /* Приводит проект к текущей схеме. Неизвестные поля сохраняются. Схема из будущего — ошибка (из model.migrate). */
@@ -17,6 +17,7 @@
     if (!d || typeof d !== 'object' || Array.isArray(d) || !d.object || typeof d.object !== 'object') throw new Error('это не файл проекта «Помощника строителя»');
     d.object = SM.model.migrate(d.object); d.library = SM.seeds.upgradeLibrary(d.library);
     for (const k of ['routes', 'techs', 'materials', 'plan', 'approved']) if (!Array.isArray(d[k])) d[k] = [];
+    d.techVersions = d.techVersions && typeof d.techVersions === 'object' ? d.techVersions : {}; if (SM.ver) SM.ver.pinAll(d);
     d.fin = d.fin || {waste: 0, reserve: 0, overhead: 0, discount: 0, vat: 0}; d.bought = d.bought || {};
     return d;
   };
@@ -109,7 +110,7 @@
     const D = SM.model.derive(o), geo = [['Помещение', 'Высота, м', 'Пол, м²', 'Потолок, м²', 'Стены, м²', 'Периметр, м', 'Замечания']];
     rooms.forEach((r, i) => geo.push([r.name, c(r.height), c(D[i].floor), c(D[i].ceiling), c(D[i].wallArea), c(D[i].perimeter), (D[i].issues || []).join('; ')]));
     const works = [['Помещение', 'Технология', 'Статус']];
-    for (const it of S.plan) { const t = S.techs.find(x => x.id === it.techId); works.push([rn(it.roomId), t ? t.name : '(удалена)', SM.exec ? SM.exec.LABEL[SM.exec.view(S, it).status] : (it.status || 'PLANNED')]); }
+    for (const it of S.plan) { const t = SM.ver ? SM.ver.resolve(S, it) : S.techs.find(x => x.id === it.techId); works.push([rn(it.roomId), t ? t.name : '(удалена)', SM.exec ? SM.exec.LABEL[SM.exec.view(S, it).status] : (it.status || 'PLANNED')]); }
     return [{name: 'Смета', rows: est}, {name: 'Закупка', rows: buy}, {name: 'Помещения', rows: geo}, {name: 'Работы', rows: works}];
   };
 })(typeof window !== 'undefined' ? window : globalThis);

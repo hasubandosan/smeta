@@ -1,6 +1,6 @@
 // Тесты сохранности данных без браузера и зависимостей: node tests/storage.test.js
 const assert = require('assert'), SM = require('../js/core.js');
-for (const f of ['geometry', 'model', 'seeds', 'rules', 'estimate', 'exec', 'storage']) require('../js/' + f + '.js');
+for (const f of ['geometry', 'model', 'seeds', 'rules', 'ver', 'estimate', 'exec', 'storage']) require('../js/' + f + '.js');
 const St = SM.store; let n = 0;
 const t = async (name, f) => { await f(); n++; console.log('OK   ' + name); };
 const mk = () => { const ls = St.memStorage(); return ls; };

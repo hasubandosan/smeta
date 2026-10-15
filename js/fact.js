@@ -16,7 +16,7 @@
   /* План против факта по начатым работам. Итог факта считает только известное и честно говорит, чего не хватает. */
   F.report = S => {
     const R = SM.est.compute(S); let factWork = 0, planWork = 0, missing = 0, known = 0;
-    const items = S.plan.filter(started).map(item => { const tech = S.techs.find(t => t.id === item.techId); if (!tech) return null;
+    const items = S.plan.filter(started).map(item => { const tech = (SM.ver ? SM.ver.resolve(S, item) : S.techs.find(t => t.id === item.techId)); if (!tech) return null;
       const f = item.fact || {ops: {}, mats: {}}, done = item.status === 'COMPLETED' || item.status === 'ACCEPTED';
       const ops = tech.ops.map(op => { const row = R.rows.find(r => r.item === item && r.op === op), pq = row ? row.q : null, pw = row ? row.work : null, fo = (f.ops || {})[op.id] || {}, fq = unk(fo.qty) ? null : fo.qty, fc = unk(fo.cost) ? null : fo.cost;
         if (pw !== null) planWork += pw; if (fc !== null) { factWork += fc; known++; } else if (done) missing++;

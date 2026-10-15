@@ -16,7 +16,7 @@
     const rows = [], need = new Map(), f = S.fin || {}, skipped = [], cache = {};
     const isDone = item => { if (!item.processId || !S.library || !SM.rules || (item.status && item.status !== 'PLANNED')) return false;
       try { const P = cache[item.roomId] || (cache[item.roomId] = SM.rules.plan(S.object, S.library, item.roomId)), it = P.items.find(x => x.id === item.processId); return !!it && it.status === 'DONE'; } catch (e) { return false; } };
-    for (const item of S.plan) { const tech = S.techs.find(t => t.id === item.techId); if (!tech) continue; if (isDone(item)) { skipped.push(item.id); continue; } const V = E.vars(S, item, tech);
+    for (const item of S.plan) { const tech = (SM.ver ? SM.ver.resolve(S, item) : S.techs.find(t => t.id === item.techId)); if (!tech) continue; if (isDone(item)) { skipped.push(item.id); continue; } const V = E.vars(S, item, tech);
       for (const op of tech.ops) {
         const q = SM.evalExpr(op.qty, V), row = {item, tech, op, q: q.ok ? q.value : null, missing: q.unknown || [], error: q.error, work: null, mats: []};
         if (q.ok) row.work = q.value * num(op.price);

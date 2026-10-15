@@ -35,7 +35,7 @@
   function viewTechs() {
     return '<h2>Технологии</h2><button data-a=legacy>⬇ Взять технологии и материалы из старого приложения</button><p class=hint>Технология = набор операций. У операции: единица, цена работы за единицу, формула объёма и материалы с расходом на единицу. В формулах: floor, ceiling, walls, perimeter, height, box и свои параметры технологии.</p>' +
       S.techs.map((t, ti) => `<div class=card><h3>${inp('techs.' + ti + '.name', t.name, {w: 260})} ${btn('del', 'techs.' + ti, 'Удалить технологию')}</h3>
-      <div>Реализует процесс: ${sel('techs.' + ti + '.processId', t.processId || '', [['', '— не выбран —']].concat((S.library.processes || []).map(p => [p.id, p.name])))}</div>
+      ${verLine(t)}<div>Реализует процесс: ${sel('techs.' + ti + '.processId', t.processId || '', [['', '— не выбран —']].concat((S.library.processes || []).map(p => [p.id, p.name])))}</div>
       <div>Параметры: ${(t.params || []).map((p, i) => inp(`techs.${ti}.params.${i}.key`, p.key, {w: 80, ph: 'имя'}) + '=' + inp(`techs.${ti}.params.${i}.def`, p.def, {n: 1, w: 50}) + btn('del', `techs.${ti}.params.${i}`, '✕')).join(' ')} ${btn('add', 'techs.' + ti + '.params', '＋ параметр', 'data-k=param')}</div>
       ${t.ops.map((op, oi) => `<div class=op><div>${inp(`techs.${ti}.ops.${oi}.name`, op.name, {w: 240, ph: 'Операция'})} ${btn('del', `techs.${ti}.ops.${oi}`, '✕')}</div>
         <div>ед. ${inp(`techs.${ti}.ops.${oi}.unit`, op.unit, {w: 50, ph: 'м2'})} цена ₽ ${inp(`techs.${ti}.ops.${oi}.price`, op.price, {n: 1, w: 70})} объём = ${inp(`techs.${ti}.ops.${oi}.qty`, op.qty, {w: 150, ph: 'floor'})}</div>
@@ -49,11 +49,15 @@
     return '<h2>Материалы</h2><p class=hint>Цена — за упаковку; «в упаковке» — сколько единиц. Пусто = неизвестно.</p><table><tr><th>Название<th>Ед.<th>В упаковке<th>Цена за упак., ₽<th></tr>' +
       S.materials.map((m, i) => `<tr><td>${inp(`materials.${i}.name`, m.name, {w: 200})}<td>${inp(`materials.${i}.unit`, m.unit, {w: 50})}<td>${inp(`materials.${i}.packQty`, m.packQty, {n: 1, w: 70})}<td>${inp(`materials.${i}.price`, m.price, {n: 1, w: 80})}<td>${btn('del', 'materials.' + i, '✕')}</tr>`).join('') + '</table>' + btn('add', 'materials', '＋ Материал', 'data-k=material');
   }
+  function verBadge(p) { const s = SM.ver.state(S, p); return (s.pinned ? ` <span class=hint>v${s.pinned}</span>` : '') + (s.canUpdate ? ` <span class=warn>технология изменена</span> ${btn('ver-update', p.id, 'Обновить до текущей')}<div class=hint>${s.changes.map(esc).join('; ') || 'содержимое изменено'}</div>` : '') + (s.frozen ? ' <span class=hint>(технология изменена; начатая работа остаётся на v' + s.pinned + ')</span>' : ''); }
+  function verNote(p) { const s = SM.ver.state(S, p); return s.canUpdate ? ' <span class=warn>есть правки технологии — см. «Смета»</span>' : ''; }
+  function verLine(t) { const L = (S.techVersions || {})[t.id] || [], ch = SM.ver.isChanged(S, t.id);
+    return `<div class=hint>Версии: ${L.length ? L.map(x => 'v' + x.v).join(', ') : 'пока нет (создаётся, когда технология ставится в план)'}${ch && L.length ? ' · есть правки после v' + L[L.length - 1].v + ': запланированные работы остаются на своей версии' : ''} ${ch ? btn('ver-release', t.id, 'Зафиксировать версию') : ''}</div>`; }
   function viewEstimate() {
     const o = S.object, R = SM.est.compute(S);
     const rooms = o.geometry.rooms.map(r => [r.id, r.name]), techs = S.techs.map(t => [t.id, t.name]);
     return `<h2>Работы и смета</h2><div class=card><b>Что делаем:</b> ${techs.length ? `<select id=pt>${techs.map(([k, t]) => `<option value="${k}">${esc(t)}</option>`).join('')}</select> в <select id=pr>${rooms.map(([k, t]) => `<option value="${k}">${esc(t)}</option>`).join('')}</select> <button data-a=plan-add>Добавить в план</button>` : '<i class=hint>Сначала создайте технологию.</i>'}
-      ${S.plan.map((p, i) => { const t = S.techs.find(x => x.id === p.techId); return `<div>• ${esc(t ? t.name : '(удалена)')} — ${esc((rooms.find(r => r[0] === p.roomId) || [0, '?'])[1])} ${R.skipped.includes(p.id) ? '<i class=hint>(процесс уже выполнен или не нужен — в смету не входит; чтобы учесть работу — переведите её в «В работе»)</i>' : ''} ${btn('del', 'plan.' + i, '✕')}</div>`; }).join('')}</div>
+      ${S.plan.map((p, i) => { const t = SM.ver.resolve(S, p); return `<div>• ${esc(t ? t.name : '(удалена)')}${verBadge(p)} — ${esc((rooms.find(r => r[0] === p.roomId) || [0, '?'])[1])} ${R.skipped.includes(p.id) ? '<i class=hint>(процесс уже выполнен или не нужен — в смету не входит; чтобы учесть работу — переведите её в «В работе»)</i>' : ''} ${btn('del', 'plan.' + i, '✕')}</div>`; }).join('')}</div>
       <table><tr><th>Операция<th>Объём<th>Работа, ₽</tr>${R.rows.map(r => `<tr><td>${esc(r.tech.name)} › ${esc(r.op.name)}<td>${r.q === null ? `<span class=warn>? ${r.missing.length ? 'нет: ' + esc(r.missing.join(', ')) : esc(r.error || '')}</span>` : f2(r.q) + ' ' + esc(r.op.unit)}<td class=n>${f2(r.work)}</tr>`).join('')}</table>
       <div class=card>Потери на подрезку, % ${inp('fin.waste', S.fin.waste, {n: 1, w: 50})} Запас, % ${inp('fin.reserve', S.fin.reserve, {n: 1, w: 50})}</div>
       <div class=card>Накладные, % ${inp('fin.overhead', S.fin.overhead, {n: 1, w: 50})} Скидка, % ${inp('fin.discount', S.fin.discount, {n: 1, w: 50})} НДС, % ${inp('fin.vat', S.fin.vat, {n: 1, w: 50})}</div>
@@ -76,7 +80,7 @@
   const TRI_OPTS = [['UNKNOWN', 'неизвестно'], ['YES', 'да'], ['NO', 'нет'], ['NOT_APPLICABLE', 'не применимо']];
   function techPick(rid, pid) {
     const inPlan = S.plan.map((p, ix) => [p, ix]).filter(([p]) => p.roomId === rid && p.processId === pid), opts = S.techs.filter(t => t.processId === pid);
-    return `<div class=mat>${inPlan.map(([p, ix]) => `В плане: ${esc((S.techs.find(t => t.id === p.techId) || {name: '(удалена)'}).name)} ${btn('del', 'plan.' + ix, '✕')}`).join('<br>')}
+    return `<div class=mat>${inPlan.map(([p, ix]) => `В плане: ${esc((SM.ver.resolve(S, p) || {name: '(удалена)'}).name)} ${btn('del', 'plan.' + ix, '✕')}`).join('<br>')}
       ${opts.length ? `<select data-tp="${rid}|${pid}">${opts.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('')}</select> ${btn('plan-tech', rid + '|' + pid, '＋ В план')}` : '<i class=hint>Нет технологии для этого процесса — привяжите её во вкладке «Технологии».</i>'}</div>`;
   }
   function viewState() {
@@ -122,8 +126,8 @@
     const o = S.object;
     return '<h2>Работы</h2><p class=hint>Статусы: запланировано → в работе → выполнено → принято. «Выполнено» меняет состояние объекта. «Принято» — только после чек-листа приёмки (его пункты — заметки «Приёмка» у операций технологии). Факт (объём, стоимость, расход материалов) вносится после начала работы и не меняет смету.</p>' + (REP.items.length ? `<div class=card><b>Итого по начатым работам:</b> план ${f2(REP.planWork)} ₽, факт ${f2(REP.factWork)} ₽ (стоимость указана по ${REP.costKnown} операциям)${REP.incomplete ? `<div class=warn>⚠ У выполненных работ не указана стоимость по ${REP.costMissing} операциям — факт неполный.</div>` : ''}</div>` : '') + o.geometry.rooms.map(r => {
       const items = S.plan.filter(p => p.roomId === r.id); if (!items.length) return '';
-      return `<div class=card><h3>${esc(r.name)}</h3>` + items.map(it => { const v = SM.exec.view(S, it), t = S.techs.find(x => x.id === it.techId);
-        return `<div class=op><b>${esc(t ? t.name : '(удалена)')}</b> — ${SM.exec.LABEL[v.status]}
+      return `<div class=card><h3>${esc(r.name)}</h3>` + items.map(it => { const v = SM.exec.view(S, it), t = SM.ver.resolve(S, it);
+        return `<div class=op><b>${esc(t ? t.name : '(удалена)')}</b> <span class=hint>${it.techVer ? 'v' + it.techVer : ''}</span> — ${SM.exec.LABEL[v.status]}${verNote(it)}
           ${v.status === 'PLANNED' ? (v.canStart ? btn('w-start', it.id, 'Начать') : v.waits.map(x => `<div class=warn>⛔ ${esc(x)}</div>`).join('')) : ''}
           ${v.status === 'IN_PROGRESS' ? btn('w-complete', it.id, 'Выполнено') : ''}${v.status === 'COMPLETED' ? btn('w-accept', it.id, 'Принять') : ''}
           ${v.conditions.map(x => `<div class=hint>Условие: ${esc(x)}</div>`).join('')}${v.errors.map(x => `<div class=warn>Частая ошибка: ${esc(x)}</div>`).join('')}
@@ -163,11 +167,13 @@
       const r = SM.legacy.convert(JSON.parse(raw), S); S.materials.push(...r.materials); S.techs.push(...r.techs); alert('Перенесено: технологий ' + r.techs.length + ', материалов ' + r.materials.length + '. Старое приложение не изменено.'); },
     complete(p) { const [rid, pid] = p.split('|'); try { SM.rules.complete(S.object, S.library, rid, pid); } catch (e) { alert(e.message); } },
     'plan-tech'(p) { const [rid, pid] = p.split('|'), el = document.querySelector(`[data-tp="${p}"]`); if (!el) return;
-      if (!S.plan.some(x => x.roomId === rid && x.processId === pid && x.techId === el.value)) S.plan.push({id: uid(), techId: el.value, roomId: rid, processId: pid, values: {}}); },
+      if (!S.plan.some(x => x.roomId === rid && x.processId === pid && x.techId === el.value)) { const it = {id: uid(), techId: el.value, roomId: rid, processId: pid, values: {}}; S.plan.push(it); SM.ver.pin(S, it); } },
     'w-start'(id) { try { SM.exec.start(S, S.plan.find(x => x.id === id)); } catch (e) { alert(e.message); } },
     'w-complete'(id) { try { SM.exec.complete(S, S.plan.find(x => x.id === id)); } catch (e) { alert(e.message); } },
     'w-accept'(id) { try { SM.exec.accept(S, S.plan.find(x => x.id === id)); } catch (e) { alert(e.message); } },
-    'plan-add'() { S.plan.push({id: uid(), techId: $('pt').value, roomId: $('pr').value, values: {}}); },
+    'plan-add'() { const it = {id: uid(), techId: $('pt').value, roomId: $('pr').value, values: {}}; S.plan.push(it); SM.ver.pin(S, it); },
+    'ver-update'(id) { try { SM.ver.update(S, S.plan.find(x => x.id === id)); } catch (e) { alert(e.message); } },
+    'ver-release'(id) { try { SM.ver.release(S, id); } catch (e) { alert(e.message); } },
     approve() { SM.fact.approve(S, $('an') ? $('an').value : ''); },
     'export-json'() { download('stroysmeta_' + new Date().toISOString().slice(0, 10) + '.json', SM.store.toJson(S)); },
     'export-xlsx'() { if (!window.XLSX) return alert('Библиотека Excel не загрузилась — нужен интернет.');

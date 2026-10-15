@@ -1,0 +1,38 @@
+// Версии технологий без браузера: node tests/ver.test.js
+const assert = require('assert'), SM = require('../js/core.js');
+for (const f of ['geometry', 'model', 'seeds', 'rules', 'ver', 'estimate', 'exec', 'storage', 'fact']) require('../js/' + f + '.js');
+const V = SM.ver; let n = 0; const t = (name, f) => { f(); n++; console.log('OK   ' + name); };
+const near = (a, b) => assert.ok(Math.abs(a - b) < 1e-6, a + ' != ' + b);
+const mk = () => { const S = SM.store.fresh(); S.materials.push({id: 'm1', name: 'Смесь', unit: 'кг', packQty: 25, price: 700});
+  S.techs.push({id: 't1', name: 'Стяжка', params: [{key: 'th', def: 50}], ops: [{id: 'o1', name: 'Залить', unit: 'м2', price: 1000, qty: 'floor', mats: [{id: 'x', matId: 'm1', rate: '5'}], notes: [{id: 'n1', cat: 'accept', text: 'Ровная'}]}]});
+  return S; };
+const add = S => { const it = {id: 'p' + (S.plan.length + 1), techId: 't1', roomId: S.object.geometry.rooms[0].id, values: {}}; S.plan.push(it); V.pin(S, it); return it; };
+const work = (S, it) => SM.est.compute(S).rows.find(r => r.item === it).work;
+
+t('постановка в план создаёт снимок v1; повторная постановка без правок версию не плодит', () => { const S = mk(), a = add(S), b = add(S);
+  assert.deepStrictEqual([a.techVer, b.techVer, S.techVersions.t1.length], [1, 1, 1]); });
+t('правка технологии не меняет уже запланированную работу; новая получает v2', () => { const S = mk(), a = add(S); near(work(S, a), 15750);
+  S.techs[0].ops[0].price = 1200; near(work(S, a), 15750); const b = add(S); assert.strictEqual(b.techVer, 2); near(work(S, b), 18900); near(work(S, a), 15750); });
+t('снимок неизменяем: правка текущей технологии не трогает сохранённую версию', () => { const S = mk(); add(S); S.techs[0].ops[0].price = 5; S.techs[0].ops[0].mats[0].rate = '99';
+  assert.strictEqual(S.techVersions.t1[0].tech.ops[0].price, 1000); assert.strictEqual(S.techVersions.t1[0].tech.ops[0].mats[0].rate, '5'); });
+t('состояние: изменено / можно обновить; обновление пересчитывает и показывает отличия', () => { const S = mk(), a = add(S); assert.deepStrictEqual([V.state(S, a).changed, V.state(S, a).canUpdate], [false, false]);
+  S.techs[0].ops[0].price = 1200; S.techs[0].params[0].def = 60; const s = V.state(S, a); assert.ok(s.changed && s.canUpdate); assert.ok(s.changes.includes('«Залить»: цена 1000 → 1200') && s.changes.includes('параметр th: 50 → 60'));
+  const r = V.update(S, a); assert.deepStrictEqual([r.from, r.to, a.techVer], [1, 2, 2]); near(work(S, a), 18900); assert.throws(() => V.update(S, a), /не изменилась/); });
+t('начатая работа остаётся на своей версии и не обновляется', () => { const S = mk(), a = add(S); SM.exec.start(S, a); S.techs[0].ops[0].price = 1200;
+  const s = V.state(S, a); assert.ok(s.changed && !s.canUpdate && s.frozen); assert.throws(() => V.update(S, a), /остаётся на своей версии/); near(work(S, a), 15750); });
+t('удалённая технология: работа сохраняется со своей версией, имя и расчёт на месте', () => { const S = mk(), a = add(S); S.techs.length = 0;
+  assert.strictEqual(V.resolve(S, a).name, 'Стяжка'); near(work(S, a), 15750); assert.ok(!V.state(S, a).changed); assert.throws(() => V.update(S, a), /нет/); });
+t('миграция: пункты без версии фиксируются на текущей технологии, повтор безопасен, неизвестная технология не ломает', () => { const S = mk(); S.plan.push({id: 'old', techId: 't1', roomId: S.object.geometry.rooms[0].id, values: {}}, {id: 'ghost', techId: 'нет', roomId: 'r', values: {}});
+  V.pinAll(S); V.pinAll(S); assert.strictEqual(S.plan[0].techVer, 1); assert.strictEqual(S.plan[1].techVer, undefined); assert.strictEqual(S.techVersions.t1.length, 1); });
+t('загрузка старого проекта: techVersions добавляется, работы закреплены на версии', () => { const S = mk(); S.plan.push({id: 'old', techId: 't1', roomId: S.object.geometry.rooms[0].id, values: {}}); delete S.techVersions;
+  const r = SM.store.parse(SM.store.toJson(S)); assert.strictEqual(r.plan[0].techVer, 1); assert.strictEqual(r.techVersions.t1.length, 1);
+  r.techs[0].ops[0].price = 1; const r2 = SM.store.parse(SM.store.toJson(r)); near(SM.est.compute(r2).rows[0].work, 15750); });
+t('факт и приёмка работают по версии пункта (чек-лист не «уезжает» при правке технологии)', () => { const S = mk(), a = add(S); SM.exec.start(S, a);
+  S.techs[0].ops[0].notes = [{id: 'n2', cat: 'accept', text: 'Другое'}]; const v = SM.exec.view(S, a); assert.deepStrictEqual(v.checklist.map(x => x.id), ['n1']);
+  SM.fact.setOp(a, 'o1', 'qty', 16); assert.strictEqual(SM.fact.report(S).items[0].ops[0].factQty, 16); });
+t('release: без изменений возвращает ту же версию; с заметкой; diff добавленных/убранных операций и материалов', () => { const S = mk(); const e1 = V.release(S, 't1', 'старт'); assert.strictEqual(V.release(S, 't1'), e1); assert.strictEqual(e1.note, 'старт');
+  S.techs[0].ops.push({id: 'o2', name: 'Затереть', unit: 'м2', price: 1, qty: 'floor', mats: []}); S.techs[0].ops[0].mats = [];
+  const d = V.diff(e1.tech, S.techs[0], id => 'Смесь'); assert.ok(d.includes('добавлена операция «Затереть»') && d.includes('«Залить»: убран материал Смесь')); });
+t('альтернативные маршруты считают по текущей технологии, закреплённые пункты — по своей версии', () => { const S = mk(), a = add(S); S.techs[0].ops[0].price = 2000;
+  const E = SM.est.compute(Object.assign({}, S, {plan: S.plan.concat([{id: 'r', techId: 't1', roomId: a.roomId, values: {}}])})); near(E.rows.find(r => r.item === a).work, 15750); near(E.rows.find(r => r.item.id === 'r').work, 31500); });
+console.log('Итого проверок: ' + n);

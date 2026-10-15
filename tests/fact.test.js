@@ -1,6 +1,6 @@
 // Факт выполнения и снимки смет без браузера: node tests/fact.test.js
 const assert = require('assert'), SM = require('../js/core.js');
-for (const f of ['geometry', 'model', 'seeds', 'rules', 'estimate', 'exec', 'storage', 'fact']) require('../js/' + f + '.js');
+for (const f of ['geometry', 'model', 'seeds', 'rules', 'ver', 'estimate', 'exec', 'storage', 'fact']) require('../js/' + f + '.js');
 const F = SM.fact; let n = 0; const t = (name, f) => { f(); n++; console.log('OK   ' + name); };
 const mk = () => { const S = SM.store.fresh(); S.materials.push({id: 'm1', name: 'Смесь', unit: 'кг', packQty: 25, price: 700});
   S.techs.push({id: 't1', name: 'Стяжка', params: [], ops: [{id: 'o1', name: 'Залить', unit: 'м2', price: 1000, qty: 'floor', mats: [{id: 'x', matId: 'm1', rate: '5'}]}, {id: 'o2', name: 'Затереть', unit: 'м2', price: 100, qty: 'floor', mats: []}]});
