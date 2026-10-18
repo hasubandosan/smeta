@@ -109,6 +109,17 @@
         <h4>Текущее состояние</h4>${kinds.map(k => o.surfaces.filter(x => x.roomId === r.id && x.kind === k).map(sf => `<div class=op><b>${esc(sf.name)}</b> ${(lib.layers[k] || []).map(([ly, lb]) => `<span style="white-space:nowrap">${esc(lb)}: <select data-a=state data-p="${sf.id}|${ly}">${TRI_OPTS.map(([v, t]) => `<option value=${v} ${SM.model.getState(o, sf.id, ly) === v ? 'selected' : ''}>${t}</option>`).join('')}</select></span>`).join(' ')}</div>`).join('')).join('')}</div>`; }).join('');
   }
   const KINDS = [['floor', 'пол'], ['wall', 'стены'], ['ceiling', 'потолок'], ['box', 'короб']];
+  /* Паузы между процессами: ввод вручную; текст справочника («что до», «защита») — только подсказка (D27, D32). */
+  const timeCell = t => { if (!t || t.minDays === null && !t.steps.length) return '—'; const lo = t.minDays === null ? '?' : f2(t.minDays), hi = t.maxDays === null ? '' : ' … ' + f2(t.maxDays);
+    return (t.steps.length < 2 ? '—' : 'от ' + lo + hi) + (t.unknown.length ? ' <span class=warn title="' + esc(t.unknown.join('; ')) + '">⚠</span>' : ''); };
+  const pauseHint = p => { const ids = new Set([p.beforeId, p.afterId]), ts = S.techs.filter(t => ids.has(t.processId)), seen = new Set(), out = [];
+    for (const t of ts) for (const w of SM.kb.forTech(KB, t.id)) { if (seen.has(w.id)) continue; seen.add(w.id); const a = (w.sections.pre || '').trim(), b = (w.sections.protect || '').trim();
+      if (a || b) out.push(`<details><summary>📖 ${esc(SM.kb.label(w))}: что до / защита</summary>${a ? '<h4>Что должно быть до</h4><div class=kbtext>' + SM.kb.html(a) + '</div>' : ''}${b ? '<h4>Защита результата</h4><div class=kbtext>' + SM.kb.html(b) + '</div>' : ''}</details>`); }
+    return out.join(''); };
+  function pauseCard() { const procs = [['', '— процесс —']].concat(S.library.processes.map(p => [p.id, p.name]));
+    return `<div class=card><h3>Паузы между процессами</h3><p class=hint>Например: плитка — не раньше чем через 7 дней после стяжки. Числа вводите сами (из справочника они не берутся); пусто = неизвестно. Паузы учитываются в сравнении маршрутов.</p>`
+      + S.pauses.map((p, i) => `<div class=op><div>${sel(`pauses.${i}.beforeId`, p.beforeId, procs)} через ${inp(`pauses.${i}.minDays`, p.minDays, {n: 1, w: 45, ph: 'от'})} … ${inp(`pauses.${i}.maxDays`, p.maxDays, {n: 1, w: 45, ph: 'до'})} дн. после ${sel(`pauses.${i}.afterId`, p.afterId, procs)} ${btn('del', 'pauses.' + i, '✕')}</div>
+        <div>${inp(`pauses.${i}.note`, p.note, {w: 340, ph: 'пояснение'})}</div>${pauseHint(p)}</div>`).join('') + btn('add', 'pauses', '＋ Пауза', 'data-k=pause') + '</div>'; }
   function viewRoutes() {
     const lib = S.library, rooms = S.object.geometry.rooms, techOpt = pid => [['', '— без технологии —']].concat(S.techs.filter(t => t.processId === pid).map(t => [t.id, t.name]));
     const editor = S.routes.map((r, i) => `<div class=card><h3>${inp('routes.' + i + '.name', r.name, {w: 240})} ${sel('routes.' + i + '.roomId', r.roomId, rooms.map(x => [x.id, x.name]))} ${btn('del', 'routes.' + i, 'Удалить')}</h3>
@@ -120,9 +131,10 @@
       return `<div class=card><h3>Сравнение: ${esc(room.name)}</h3><table><tr><th><th>${C.results.map(x => esc(x.route.name) + (x.route.id === C.best ? ' ✓ дешевле' : '')).join('<th>')}</tr>
         <tr><td>Работы, ₽<td class=n>${C.results.map(x => f2(x.work)).join('<td class=n>')}</tr><tr><td>Материалы, ₽<td class=n>${C.results.map(x => f2(x.mat)).join('<td class=n>')}</tr>
         <tr><td><b>Итого, ₽</b><td class=n>${C.results.map(x => '<b>' + f2(x.grand) + '</b>' + (x.incomplete ? ' ⚠' : '')).join('<td class=n>')}</tr>
-        <tr><td>Дальше можно<td>${C.results.map(x => esc(x.ready.join(', ') || '—')).join('<td>')}</tr><tr><td>Заблокировано процессов<td class=n>${C.results.map(x => x.blocked).join('<td class=n>')}</tr></table>
-        <p class=hint>Итог = шаги маршрута + остальные работы плана, которые после него ещё нужны. ⚠ — часть данных неизвестна, сравнивать цену нельзя. Времени и закупленного заранее пока не учитываем.</p></div>`; }).join('');
-    return '<h2>Маршруты</h2><p class=hint>Маршрут — вариант решения одной задачи (например: оставить стяжку / отремонтировать / снести и залить новую). Сравнивается весь путь с последствиями, а не одна цена.</p>' + cmp + editor + btn('add', 'routes', '＋ Маршрут', 'data-k=route');
+        <tr><td>Дальше можно<td>${C.results.map(x => esc(x.ready.join(', ') || '—')).join('<td>')}</tr><tr><td>Заблокировано процессов<td class=n>${C.results.map(x => x.blocked).join('<td class=n>')}</tr>
+        <tr><td>Паузы между шагами, дней<td class=n>${C.results.map(x => timeCell(x.time)).join('<td class=n>')}</tr></table>${C.results.map(x => x.time && x.time.warnings.length ? `<p class=warn>${esc(x.route.name)}: ${x.time.warnings.map(esc).join('; ')}</p>` : '').join('')}
+        <p class=hint>Итог = шаги маршрута + остальные работы плана, которые после него ещё нужны. ⚠ — часть данных неизвестна, сравнивать цену нельзя. Время считается только по паузам (время самих работ не хранится); закупленное заранее не учитываем.</p></div>`; }).join('');
+    return '<h2>Маршруты</h2><p class=hint>Маршрут — вариант решения одной задачи (например: оставить стяжку / отремонтировать / снести и залить новую). Сравнивается весь путь с последствиями, а не одна цена.</p>' + cmp + editor + btn('add', 'routes', '＋ Маршрут', 'data-k=route') + pauseCard();
   }
   const sg = n => (n > 0 ? '+' : '') + f2(n);
   function factBlock(it, rep, st) {
@@ -224,7 +236,7 @@
   function render() { const y = scrollY; $('nav').innerHTML = TABS.map(([k, t]) => `<button class="${k === tab ? 'on' : ''}" data-a=tab data-p=${k}>${t}</button>`).join('') + '<span id=sync class=hint style="padding:8px;white-space:nowrap"></span>'; paintSync(); $('main').innerHTML = VIEWS[tab](); scrollTo(0, y); }
   const NEW = {tech: () => ({id: uid(), name: 'Новая технология', params: [], ops: []}), op: () => ({id: uid(), name: '', unit: 'м2', price: null, qty: '', mats: []}), mat: () => ({id: uid(), matId: '', rate: ''}),
     route: () => ({id: uid(), name: 'Новый маршрут', roomId: S.object.geometry.rooms[0] ? S.object.geometry.rooms[0].id : '', steps: [], assume: []}), rstep: () => ({processId: '', techId: ''}), rassume: () => ({kind: 'floor', layer: '', value: 'YES'}),
-    note: () => ({id: uid(), cat: 'accept', text: ''}),
+    note: () => ({id: uid(), cat: 'accept', text: ''}), pause: () => ({id: uid(), beforeId: '', afterId: '', minDays: null, maxDays: null, note: ''}),
     param: () => ({key: '', def: null}), material: () => ({id: uid(), name: 'Новый материал', unit: 'кг', packQty: null, price: null})};
   const A = {
     tab(p) { tab = p; }, del(p) { const k = p.split('.'), i = +k.pop(), arr = get(k.join('.')); const x = arr[i]; arr.splice(i, 1); if (k.join('.') === 'object.geometry.openings' || x === undefined) return; },

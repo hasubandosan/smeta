@@ -1,7 +1,7 @@
 /* Сравнение маршрутов: полный путь решения задачи, а не локальная цена. Без DOM.
    route = {id, name, roomId, steps:[{processId, techId?}], assume:[{kind, layer, value}], note?}
    Шаги и допущения применяются к КОПИИ объекта (реальное состояние не меняется); затем считается цена шагов + цена
-   оставшихся пунктов плана, которые после маршрута ещё нужны. Порядок шагов внутри маршрута не проверяется. Времени пока нет в данных. */
+   оставшихся пунктов плана, которые после маршрута ещё нужны. Порядок шагов и паузы между процессами (`SM.pauses`, `S.pauses`) учитываются в `time`; время самих работ в данных не хранится. */
 (function (root) {
   'use strict';
   const SM = root.SM = root.SM || {}, M = SM.model, R = SM.routes = {};
@@ -19,7 +19,7 @@
     const E = SM.est.compute(Object.assign({}, S, {plan: items.concat(down)}));
     return {route, work: E.work, mat: E.mat, grand: E.grand, incomplete: E.incomplete, steps: (route.steps || []).length,
       ready: after.items.filter(i => i.status === 'READY').map(i => i.name), blocked: after.items.filter(i => i.status === 'BLOCKED').length,
-      questions: after.questions.length};
+      questions: after.questions.length, time: SM.pauses ? SM.pauses.schedule(S, route.steps) : null};
   };
   // compareAll -> результаты по маршрутам помещения; best — самый дешёвый среди полностью посчитанных (иначе null)
   R.compareAll = (S, roomId) => {
