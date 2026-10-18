@@ -68,6 +68,21 @@
       const hay = all.join('\n'); if (w.every(x => hay.includes(x))) res.push({topic: t, inTitle: w.some(x => title.includes(x)), where, snippet}); }
     res.sort((a, b) => (b.inTitle - a.inTitle)); return res.slice(0, limit || 50); };
 
+  /* --- разбор раздела на пункты (приёмка, ошибки, условия) ---
+     Берутся «листья» маркированных/нумерованных списков; вложенный контекст склеивается через « — », верхний уровень с вложенными пунктами = группа
+     (например «Контрольные точки», «Числовые допуски (по СП …)»). meas=true для групп про допуски: к такому пункту в работе добавляется поле «замер».
+     Допуск из текста НЕ разбирается и не сравнивается автоматически (диапазоны, «на 1 м», несколько условий в строке — ненадёжно): оценивает человек. */
+  const plain = s => String(s).replace(/[*_`]/g, '').replace(/\s+/g, ' ').trim();
+  K.items = text => { const tree = [], stack = [];
+    for (const l of String(text || '').replace(/\r/g, '').replace(/\t/g, '    ').split('\n')) { const m = /^(\s*)([-*+]|\d+\.)\s+(.*)$/.exec(l);
+      if (m) { const n = {ind: m[1].length, text: plain(m[3]), kids: []}; while (stack.length && stack[stack.length - 1].ind >= n.ind) stack.pop(); (stack.length ? stack[stack.length - 1].kids : tree).push(n); stack.push(n); }
+      else if (l.trim() && !/^\s*-{3,}\s*$/.test(l) && !/^\s*#/.test(l)) { if (stack.length) stack[stack.length - 1].text += ' ' + plain(l); else tree.push({ind: -1, text: plain(l), kids: []}); } }
+    const out = [], leaves = (n, path, group) => { const p = path.concat(n.text); if (!n.kids.length) out.push({group, text: p.join(' — '), meas: /допуск/i.test(group)}); n.kids.forEach(k => leaves(k, p, group)); };
+    for (const top of tree) { if (top.kids.length) { const g = top.text.replace(/:\s*$/, ''); top.kids.forEach(k => leaves(k, [], g)); } else out.push({group: '', text: top.text, meas: false}); }
+    return out.filter(x => x.text); };
+  /* Что справочник знает о технологии: по связанным темам — условия и ошибки (текст целиком) и пункты приёмки (разобранные). */
+  K.workInfo = (kb, techId) => K.forTech(kb, techId).map(t => ({topic: t, cond: t.sections.cond || '', errors: t.sections.errors || '', accept: K.items(t.sections.accept || '').map(x => Object.assign({topicId: t.id}, x))}));
+
   /* --- безопасный показ текста заметок: всё экранируется, поддерживаются заголовки, списки (вложенные), таблицы, **жирный**, _курсив_, `код`, ссылки --- */
   const esc = s => String(s).replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]));
   const fmt = s => esc(s).replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>').replace(/(^|[\s(])_([^_]+)_(?=[\s).,;:!?]|$)/g, '$1<i>$2</i>').replace(/`([^`]+)`/g, '<code>$1</code>');

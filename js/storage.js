@@ -115,7 +115,9 @@
     rooms.forEach((r, i) => geo.push([r.name, c(r.height), c(D[i].floor), c(D[i].ceiling), c(D[i].wallArea), c(D[i].perimeter), (D[i].issues || []).join('; ')]));
     const works = [['Помещение', 'Технология', 'Статус']];
     for (const it of S.plan) { const t = SM.ver ? SM.ver.resolve(S, it) : S.techs.find(x => x.id === it.techId); works.push([rn(it.roomId), t ? t.name : '(удалена)', SM.exec ? SM.exec.LABEL[SM.exec.view(S, it).status] : (it.status || 'PLANNED')]); }
-    return [{name: 'Смета', rows: est}, {name: 'Закупка', rows: buy}, {name: 'Помещения', rows: geo}, {name: 'Работы', rows: works}];
+    const acc = [['Помещение', 'Технология', 'Группа', 'Пункт приёмки', 'Отмечено', 'Замер']];
+    if (SM.exec) for (const it of S.plan) { const t = SM.ver ? SM.ver.resolve(S, it) : S.techs.find(x => x.id === it.techId); for (const c of SM.exec.view(S, it).checklist) acc.push([rn(it.roomId), t ? t.name : '(удалена)', c.group || '', c.text, c.done ? 'да' : 'нет', c.measure || '']); }
+    return [{name: 'Смета', rows: est}, {name: 'Закупка', rows: buy}, {name: 'Помещения', rows: geo}, {name: 'Работы', rows: works}, {name: 'Приёмка', rows: acc}];
   };
 })(typeof window !== 'undefined' ? window : globalThis);
 if (typeof module !== 'undefined') module.exports = (typeof window !== 'undefined' ? window : globalThis).SM;

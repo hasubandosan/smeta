@@ -11,7 +11,8 @@
     try { return SM.rules.plan(S.object, S.library, item.roomId).items.find(x => x.id === item.processId) || null; } catch (e) { return null; } };
 
   X.view = (S, item) => { const tech = (SM.ver ? SM.ver.resolve(S, item) : S.techs.find(t => t.id === item.techId)), ps = procStatus(S, item), checks = item.checks || {};
-    const list = notes(tech, 'accept', item).map(n => ({id: n.id, text: n.text, done: !!checks[n.id]}));
+    const meas = item.measure || {}, list = notes(tech, 'accept', item).map(n => ({id: n.id, text: n.text, done: !!checks[n.id]}))
+      .concat((item.accept || []).map(a => ({id: a.id, text: a.text, group: a.group || '', extra: true, src: a.src || 'custom', meas: !!a.meas, measure: meas[a.id] || '', done: !!checks[a.id]})));
     const st = item.status || 'PLANNED', waits = ps && ps.status !== 'READY' && ps.status !== 'DONE' ? ps.reasons.length ? ps.reasons : ['Процесс пока нельзя начинать'] : [];
     return {status: st, canStart: st === 'PLANNED' && !waits.length, waits, process: ps, checklist: list, allChecked: list.every(x => x.done),
       conditions: notes(tech, 'cond', item).map(n => n.text), errors: notes(tech, 'error', item).map(n => n.text)};
@@ -23,6 +24,14 @@
     else if (ps && ps.status !== 'DONE') throw new Error('Нельзя завершить: ' + (ps.reasons.join('; ') || 'процесс не готов'));
     item.status = 'COMPLETED'; return item; };
   X.check = (item, noteId, val) => { item.checks = item.checks || {}; if (val) item.checks[noteId] = true; else delete item.checks[noteId]; return item; };
+  /* Дополнительные пункты приёмки пункта плана (из справочника или свои): item.accept = [{id, text, group?, meas?, src, topicId?}], замеры item.measure = {id: текст}. */
+  const open = item => { if (item.status === 'ACCEPTED') throw new Error('Работа принята — приёмка закрыта'); };
+  X.addAccept = (item, entries) => { open(item); item.accept = item.accept || []; const have = new Set(item.accept.map(a => a.text.trim().toLowerCase())); let n = 0;
+    for (const e of entries || []) { const text = String(e.text || '').trim(); if (!text || have.has(text.toLowerCase())) continue; have.add(text.toLowerCase());
+      const a = {id: SM.uid(), text, src: e.src || 'custom'}; if (e.group) a.group = e.group; if (e.meas) a.meas = true; if (e.topicId) a.topicId = e.topicId; item.accept.push(a); n++; } return n; };
+  X.removeAccept = (item, id) => { open(item); item.accept = (item.accept || []).filter(a => a.id !== id); if (item.checks) delete item.checks[id]; if (item.measure) delete item.measure[id]; return item; };
+  X.setMeasure = (item, id, val) => { open(item); const a = (item.accept || []).find(x => x.id === id); if (!a || !a.meas) throw new Error('Для этого пункта замер не предусмотрен');
+    item.measure = item.measure || {}; const s = String(val == null ? '' : val).trim(); if (s) item.measure[id] = s; else delete item.measure[id]; return item; };
   X.accept = (S, item) => { if (item.status !== 'COMPLETED') throw new Error('Принять можно только выполненную работу');
     const left = X.view(S, item).checklist.filter(x => !x.done); if (left.length) throw new Error('Не пройдена приёмка: ' + left.map(x => x.text).join('; '));
     item.status = 'ACCEPTED'; return item; };

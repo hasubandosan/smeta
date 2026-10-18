@@ -63,7 +63,7 @@ await t('облако: облако не менялось, локально но
 await t('токен облака не попадает в проект и JSON-экспорт', () => { const ls = mk(), S = St.fresh(); St.setCfg(ls, {token: 'SECRET'}); St.save(ls, S);
   assert.ok(!St.toJson(S).includes('SECRET') && !ls.getItem(St.KEY).includes('SECRET')); });
 await t('Excel: листы, неизвестное — пустая ячейка (не 0), неполный итог помечен', () => { const S = withTech(St.fresh()), sh = St.sheets(S), by = k => sh.find(x => x.name === k).rows;
-  assert.deepStrictEqual(sh.map(x => x.name), ['Смета', 'Закупка', 'Помещения', 'Работы']);
+  assert.deepStrictEqual(sh.map(x => x.name), ['Смета', 'Закупка', 'Помещения', 'Работы', 'Приёмка']);
   const known = by('Смета').find(r => r[1] === 'Стяжка › Залить'), unk = by('Смета').find(r => r[1] === 'Стяжка › Неизвестное');
   assert.strictEqual(known[3], 15.75); assert.strictEqual(known[5], 15750); assert.strictEqual(unk[3], ''); assert.strictEqual(unk[5], ''); assert.ok(unk[6].includes('нет_такой'));
   assert.ok(by('Смета').some(r => String(r[1]).includes('Итог неполный')));

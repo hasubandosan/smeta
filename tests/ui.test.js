@@ -50,4 +50,10 @@ tab('data');A($('#main').textContent.includes('Справочник знаний
  await send(JSON.stringify({version:1,topics:[{id:'x1',parentId:null,order:0,code:'3.2.2',title:'Плитка',sections:{accept:'1. Просвет ≤ 2 мм'},techIds:[]}]}));
  A(kbRaw().topics.length===1&&kbRaw().topics[0].title==='Плитка'&&msgs.some(m=>m.includes('загружен')),'справочник: загрузка из файла');
  await send('{повреждённый');A(kbRaw().topics.length===1&&msgs.some(m=>m.includes('Не удалось')),'справочник: повреждённый файл не затирает данные');
+ const tid=JSON.parse(w.localStorage.getItem('stroysmeta:model')).techs[0].id;
+ await send(JSON.stringify({version:1,topics:[{id:'k1',parentId:null,order:0,code:'1',title:'Стяжка',sections:{cond:'- Температура +5',errors:'- Много воды',accept:'- **Контрольные точки:**\n    - Не пылит\n- **Числовые допуски:**\n    - Просвет: ≤ 2 мм'},techIds:[tid]}]}));
+ tab('works');A($('#main').textContent.includes('Пункты приёмки из справочника (2)')&&$('#main').textContent.includes('частые ошибки (1)'),'работы: справка по технологии и предложение взять пункты приёмки');
+ C('[data-a=acc-kb]');const pls=JSON.parse(w.localStorage.getItem('stroysmeta:model')).plan.filter(p=>p.techId===tid);A(pls.some(p=>p.accept&&p.accept.length===2&&p.accept[1].meas===true&&!p.accept[0].meas),'работы: пункты приёмки добавлены в работу, у допуска есть замер');
+ A(!!$('[data-a=measure]')&&$('#main').textContent.includes('Просвет'),'работы: поле замера и пункты приёмки показаны');
+ C('[data-a=acc-del]');A(JSON.parse(w.localStorage.getItem('stroysmeta:model')).plan.filter(p=>p.techId===tid).some(p=>p.accept&&p.accept.length===1),'работы: пункт приёмки можно убрать');
  process.exit(ok?0:1)})();

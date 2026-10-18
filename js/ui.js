@@ -121,18 +121,26 @@
     return `<div><b>Факт</b> <span class=hint>(пусто = неизвестно; после приёмки закрыт)</span></div><table><tr><th>Операция<th>План, объём<th>Факт, объём<th>План, ₽<th>Факт, ₽</tr>${x.ops.map(o => `<tr><td>${esc(o.op.name)}<td class=n>${f2(o.planQty)} ${esc(o.op.unit)}<td>${fi(it.id + '|op|' + o.op.id + '|qty', o.factQty)}<td class=n>${f2(o.planWork)}<td>${fi(it.id + '|op|' + o.op.id + '|cost', o.factCost)}${o.dCost !== null ? ` <span class=hint>${sg(o.dCost)}</span>` : ''}</tr>`).join('')}</table>
       ${x.mats.length ? `<table><tr><th>Материал<th>По плану<th>Израсходовано</tr>${x.mats.map(m => `<tr><td>${esc(m.mat ? m.mat.name : '(удалён)')}<td class=n>${f2(m.planNeed)} ${esc(m.mat ? m.mat.unit : '')}<td>${fi(it.id + '|mat|' + m.matId, m.used)}</tr>`).join('')}</table>` : ''}`;
   }
+  /* Справочник в карточке работы: условия и частые ошибки по связанным темам (текст для человека) и пункты приёмки. */
+  function kbWork(it) { const ws = SM.kb.workInfo(KB, it.techId).filter(w => w.cond || w.errors); if (!ws.length) return '';
+    return ws.map(w => `<details><summary>📖 ${esc(SM.kb.label(w.topic))}: условия${w.errors ? ' · <span class=warn>⚠ частые ошибки (' + SM.kb.items(w.errors).length + ')</span>' : ''}</summary>${w.cond ? '<h4>Условия проведения работ</h4><div class=kbtext>' + SM.kb.html(w.cond) + '</div>' : ''}${w.errors ? '<h4>Частые ошибки</h4><div class=kbtext>' + SM.kb.html(w.errors) + '</div>' : ''}</details>`).join(''); }
+  const kbAcceptNew = it => { const have = new Set((it.accept || []).map(a => a.text.trim().toLowerCase())), seen = new Set(); return SM.kb.workInfo(KB, it.techId).flatMap(w => w.accept).filter(x => { const k = x.text.trim().toLowerCase(); if (have.has(k) || seen.has(k)) return false; seen.add(k); return true; }); };
+  function acceptBlock(it, v) { const closed = v.status === 'ACCEPTED', dis = v.status === 'PLANNED' || closed ? 'disabled' : '', avail = closed ? [] : kbAcceptNew(it);
+    const rows = v.checklist.map(c => `<div><label><input type=checkbox data-a=check data-p="${it.id}|${c.id}" ${c.done ? 'checked' : ''} ${dis}> ${c.group ? `<span class=hint>${esc(c.group)}:</span> ` : ''}${esc(c.text)}</label>${c.meas ? ` <input data-a=measure data-p="${it.id}|${c.id}" value="${esc(c.measure)}" placeholder="замер" style="width:90px" ${dis}>` : ''}${c.extra && !closed ? ' ' + btn('acc-del', it.id + '|' + c.id, '✕') : ''}</div>`).join('');
+    const add = closed ? '' : `<div>${avail.length ? btn('acc-kb', it.id, '＋ Пункты приёмки из справочника (' + avail.length + ')') : ''} <input id="acc-${it.id}" placeholder="свой пункт приёмки" style="width:220px"> ${btn('acc-add', it.id, '＋')}</div>`;
+    return rows || add ? '<div><b>Приёмка</b></div>' + rows + add : ''; }
   function viewWorks() {
     const REP = SM.fact.report(S);
     const o = S.object;
-    return '<h2>Работы</h2><p class=hint>Статусы: запланировано → в работе → выполнено → принято. «Выполнено» меняет состояние объекта. «Принято» — только после чек-листа приёмки (его пункты — заметки «Приёмка» у операций технологии). Факт (объём, стоимость, расход материалов) вносится после начала работы и не меняет смету.</p>' + (REP.items.length ? `<div class=card><b>Итого по начатым работам:</b> план ${f2(REP.planWork)} ₽, факт ${f2(REP.factWork)} ₽ (стоимость указана по ${REP.costKnown} операциям)${REP.incomplete ? `<div class=warn>⚠ У выполненных работ не указана стоимость по ${REP.costMissing} операциям — факт неполный.</div>` : ''}</div>` : '') + o.geometry.rooms.map(r => {
+    return '<h2>Работы</h2><p class=hint>Статусы: запланировано → в работе → выполнено → принято. «Выполнено» меняет состояние объекта. «Принято» — только после чек-листа приёмки (его пункты — заметки «Приёмка» у операций технологии, а также пункты из справочника и свои; у пунктов «числовых допусков» есть поле «замер», сравнение с допуском делаете вы). Факт (объём, стоимость, расход материалов) вносится после начала работы и не меняет смету.</p>' + (REP.items.length ? `<div class=card><b>Итого по начатым работам:</b> план ${f2(REP.planWork)} ₽, факт ${f2(REP.factWork)} ₽ (стоимость указана по ${REP.costKnown} операциям)${REP.incomplete ? `<div class=warn>⚠ У выполненных работ не указана стоимость по ${REP.costMissing} операциям — факт неполный.</div>` : ''}</div>` : '') + o.geometry.rooms.map(r => {
       const items = S.plan.filter(p => p.roomId === r.id); if (!items.length) return '';
       return `<div class=card><h3>${esc(r.name)}</h3>` + items.map(it => { const v = SM.exec.view(S, it), t = SM.ver.resolve(S, it);
         return `<div class=op><b>${esc(t ? t.name : '(удалена)')}</b> <span class=hint>${it.techVer ? 'v' + it.techVer : ''}</span> — ${SM.exec.LABEL[v.status]}${verNote(it)}${kbLine(it.techId)}
           ${v.status === 'PLANNED' ? (v.canStart ? btn('w-start', it.id, 'Начать') : v.waits.map(x => `<div class=warn>⛔ ${esc(x)}</div>`).join('')) : ''}
           ${v.status === 'IN_PROGRESS' ? btn('w-complete', it.id, 'Выполнено') : ''}${v.status === 'COMPLETED' ? btn('w-accept', it.id, 'Принять') : ''}
-          ${v.conditions.map(x => `<div class=hint>Условие: ${esc(x)}</div>`).join('')}${v.errors.map(x => `<div class=warn>Частая ошибка: ${esc(x)}</div>`).join('')}
+          ${v.conditions.map(x => `<div class=hint>Условие: ${esc(x)}</div>`).join('')}${v.errors.map(x => `<div class=warn>Частая ошибка: ${esc(x)}</div>`).join('')}${kbWork(it)}
           ${v.status !== 'PLANNED' ? factBlock(it, REP, v.status) : ''}
-          ${v.checklist.length ? '<div><b>Приёмка</b></div>' + v.checklist.map(c => `<label style="display:block"><input type=checkbox data-a=check data-p="${it.id}|${c.id}" ${c.done ? 'checked' : ''} ${v.status === 'PLANNED' || v.status === 'ACCEPTED' ? 'disabled' : ''}> ${esc(c.text)}</label>`).join('') : ''}</div>`; }).join('') + '</div>'; }).join('') || '<i class=hint>План пуст — добавьте технологии в план во вкладке «Состояние».</i>';
+          ${acceptBlock(it, v)}</div>`; }).join('') + '</div>'; }).join('') || '<i class=hint>План пуст — добавьте технологии в план во вкладке «Состояние».</i>';
   }
   function download(name, text, type) { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], {type: type || 'application/json'})); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000); }
   // ---------- Справочник (отдельное хранилище stroysmeta:kb, правится только здесь) ----------
@@ -246,6 +254,9 @@
     'kb-restore'() { const a = SM.kb.snaps(localStorage), i = a.length - 1; if (i < 0) return; try { const d = SM.kb.snapData(localStorage, i);
       if (confirm('Вернуть справочник на состояние от ' + new Date(a[i].t).toLocaleString('ru-RU') + '? Текущий сохранится в копию.')) { SM.kb.snap(localStorage, KB); KB = d; kbLocked = false; kbSelId = null; saveKb({keepStamp: true}); } } catch (e) { alert(e.message); } },
     'kb-cloud-push'() { kbCloudPush(); }, 'kb-cloud-pull'() { kbCloudPull(); },
+    'acc-kb'(id) { const it = S.plan.find(x => x.id === id); try { const n = SM.exec.addAccept(it, kbAcceptNew(it)); if (!n) alert('Новых пунктов в справочнике нет'); } catch (e) { alert(e.message); } },
+    'acc-add'(id) { const it = S.plan.find(x => x.id === id), el = $('acc-' + id), text = el ? el.value.trim() : ''; if (!text) return; try { SM.exec.addAccept(it, [{text, src: 'custom'}]); } catch (e) { alert(e.message); } },
+    'acc-del'(p) { const [id, nid] = p.split('|'); try { SM.exec.removeAccept(S.plan.find(x => x.id === id), nid); } catch (e) { alert(e.message); } },
     approve() { SM.fact.approve(S, $('an') ? $('an').value : ''); },
     'export-json'() { download('stroysmeta_' + new Date().toISOString().slice(0, 10) + '.json', SM.store.toJson(S)); },
     'export-xlsx'() { if (!window.XLSX) return alert('Библиотека Excel не загрузилась — нужен интернет.');
@@ -306,6 +317,7 @@
     let v = t.value.trim(); if (t.dataset.n) { v = v === '' ? null : parseFloat(v.replace(',', '.')); if (v !== null && !isFinite(v)) v = null; }
     if (k.length === 1 && k[0] === 'bought' || k[0] === 'bought') S.bought[key] = v; else o[key] = v; save(); render(); });
   document.addEventListener('change', e => { const t = e.target; if (t.dataset.a !== 'state') return; const [id, layer] = t.dataset.p.split('|'); SM.model.setState(S.object, id, layer, t.value); save(); render(); });
+  document.addEventListener('change', e => { const t = e.target; if (t.dataset.a !== 'measure') return; const [id, nid] = t.dataset.p.split('|'); try { SM.exec.setMeasure(S.plan.find(x => x.id === id), nid, t.value); } catch (err) { alert(err.message); } save(); });
   document.addEventListener('change', e => { const t = e.target; if (t.dataset.a !== 'check') return; const [id, nid] = t.dataset.p.split('|'); SM.exec.check(S.plan.find(x => x.id === id), nid, t.checked); save(); render(); });
   S = load(); SM.store.save(localStorage, S, {keepStamp: true}); render(); if (cfg().token) cloudCheck();
 })();
