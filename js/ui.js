@@ -32,10 +32,20 @@
       `<div class=card><h3>Короба и поверхности</h3>${o.surfaces.map((s, i) => s.kind === 'box' ? `<div>${esc(s.name)}: ${inp('object.surfaces.' + i + '.w', s.w, {n: 1, w: 50})} × ${inp('object.surfaces.' + i + '.l', s.l, {n: 1, w: 50})} × ${inp('object.surfaces.' + i + '.h', s.h, {n: 1, w: 50})} м ${s.assumed ? '<i class=hint>(размер взят условно — поправьте)</i>' : ''}</div>` : '').join('') || '<i class=hint>нет</i>'}</div>`;
   }
   const NOTE_CATS = [['cond', 'Условие'], ['error', 'Ошибка'], ['accept', 'Приёмка'], ['note', 'Заметка']];
+  /* Нормы из справочника рядом с операциями: только показ; расход и цену вводит человек, пока пусто — неизвестно. */
+  const normOpen = new Set();
+  function normBlock(t, ti) { const r = SM.norms.report(S, KB, t); if (!r.total) return '';
+    const head = btn('norm-tog', t.id, `📏 Нормы из справочника: подтверждено ${r.done} из ${r.total}${r.unknown ? ' · <span class=warn>не задано: ' + r.unknown + '</span>' : ''}`);
+    if (!normOpen.has(t.id)) return `<div>${head}</div>`;
+    const lines = r.lines.map(l => `<div><label><input type=checkbox data-a=norm-ok data-p="${t.id}|${esc(l.key)}" ${l.ok ? 'checked' : ''}> ${l.group ? `<span class=hint>${esc(l.group)}:</span> ` : ''}${esc(l.text)}</label></div>`).join('');
+    const ops = r.ops.map((o, oi) => `<div class=op><div>${esc(o.name || 'Операция')}: цена ₽ ${inp(`techs.${ti}.ops.${oi}.price`, t.ops[oi].price, {n: 1, w: 70})} ${o.priceUnknown ? '<span class=warn>неизвестно</span>' : ''}</div>`
+      + o.mats.map((m, mi) => { const xi = S.materials.findIndex(x => x.id === m.matId);
+        return `<div class=mat>${esc(m.name)}: расход на ед. ${inp(`techs.${ti}.ops.${oi}.mats.${mi}.rate`, t.ops[oi].mats[mi].rate, {w: 110, ph: 'формула'})} ${m.rateUnknown ? '<span class=warn>неизвестно</span>' : ''}${xi < 0 ? '' : ` · в упак. ${inp(`materials.${xi}.packQty`, S.materials[xi].packQty, {n: 1, w: 50})} · цена за упак. ₽ ${inp(`materials.${xi}.price`, S.materials[xi].price, {n: 1, w: 70})}`}</div>`; }).join('') + '</div>').join('');
+    return `<div>${head}</div><div class=card><p class=hint>Это текст справочника, в расчёт он сам не попадает. Прочитайте норму, введите расход и цену ниже и отметьте строку «подтверждено».</p>${lines}<div>${btn('norm-all', t.id + '|1', 'Подтвердить все')} ${btn('norm-all', t.id + '|0', 'Снять все')}</div><h4>Что задано в технологии</h4>${ops || '<i class=hint>операций нет</i>'}</div>`; }
   function viewTechs() {
     return '<h2>Технологии</h2><button data-a=legacy>⬇ Взять технологии и материалы из старого приложения</button><p class=hint>Технология = набор операций. У операции: единица, цена работы за единицу, формула объёма и материалы с расходом на единицу. В формулах: floor, ceiling, walls, perimeter, height, box и свои параметры технологии.</p>' +
       S.techs.map((t, ti) => `<div class=card><h3>${inp('techs.' + ti + '.name', t.name, {w: 260})} ${btn('del', 'techs.' + ti, 'Удалить технологию')}</h3>
-      ${verLine(t)}${kbLine(t.id)}<div>Реализует процесс: ${sel('techs.' + ti + '.processId', t.processId || '', [['', '— не выбран —']].concat((S.library.processes || []).map(p => [p.id, p.name])))}</div>
+      ${verLine(t)}${kbLine(t.id)}${normBlock(t, ti)}<div>Реализует процесс: ${sel('techs.' + ti + '.processId', t.processId || '', [['', '— не выбран —']].concat((S.library.processes || []).map(p => [p.id, p.name])))}</div>
       <div>Параметры: ${(t.params || []).map((p, i) => inp(`techs.${ti}.params.${i}.key`, p.key, {w: 80, ph: 'имя'}) + '=' + inp(`techs.${ti}.params.${i}.def`, p.def, {n: 1, w: 50}) + btn('del', `techs.${ti}.params.${i}`, '✕')).join(' ')} ${btn('add', 'techs.' + ti + '.params', '＋ параметр', 'data-k=param')}</div>
       ${t.ops.map((op, oi) => `<div class=op><div>${inp(`techs.${ti}.ops.${oi}.name`, op.name, {w: 240, ph: 'Операция'})} ${btn('del', `techs.${ti}.ops.${oi}`, '✕')}</div>
         <div>ед. ${inp(`techs.${ti}.ops.${oi}.unit`, op.unit, {w: 50, ph: 'м2'})} цена ₽ ${inp(`techs.${ti}.ops.${oi}.price`, op.price, {n: 1, w: 70})} объём = ${inp(`techs.${ti}.ops.${oi}.qty`, op.qty, {w: 150, ph: 'floor'})}</div>
@@ -254,6 +264,8 @@
     'kb-restore'() { const a = SM.kb.snaps(localStorage), i = a.length - 1; if (i < 0) return; try { const d = SM.kb.snapData(localStorage, i);
       if (confirm('Вернуть справочник на состояние от ' + new Date(a[i].t).toLocaleString('ru-RU') + '? Текущий сохранится в копию.')) { SM.kb.snap(localStorage, KB); KB = d; kbLocked = false; kbSelId = null; saveKb({keepStamp: true}); } } catch (e) { alert(e.message); } },
     'kb-cloud-push'() { kbCloudPush(); }, 'kb-cloud-pull'() { kbCloudPull(); },
+    'norm-tog'(id) { normOpen.has(id) ? normOpen.delete(id) : normOpen.add(id); },
+    'norm-all'(p) { const [id, on] = p.split('|'); SM.norms.setAll(S, KB, id, on === '1'); },
     'acc-kb'(id) { const it = S.plan.find(x => x.id === id); try { const n = SM.exec.addAccept(it, kbAcceptNew(it)); if (!n) alert('Новых пунктов в справочнике нет'); } catch (e) { alert(e.message); } },
     'acc-add'(id) { const it = S.plan.find(x => x.id === id), el = $('acc-' + id), text = el ? el.value.trim() : ''; if (!text) return; try { SM.exec.addAccept(it, [{text, src: 'custom'}]); } catch (e) { alert(e.message); } },
     'acc-del'(p) { const [id, nid] = p.split('|'); try { SM.exec.removeAccept(S.plan.find(x => x.id === id), nid); } catch (e) { alert(e.message); } },
@@ -270,7 +282,7 @@
     'cloud-auto'() { const c = cfg(); c.auto = c.auto === false; SM.store.setCfg(localStorage, c); },
     'cloud-check'() { cloudCheck(); }, 'cloud-push'() { cloudPush(); }, 'cloud-pull'() { cloudPull(); }
   };
-  const NOSAVE = new Set(['tab', 'lg-load', 'export-json', 'export-xlsx', 'snap-now', 'restore-snap', 'cloud-on', 'cloud-off', 'cloud-auto', 'cloud-check', 'cloud-push', 'cloud-pull']);
+  const NOSAVE = new Set(['tab', 'norm-tog', 'lg-load', 'export-json', 'export-xlsx', 'snap-now', 'restore-snap', 'cloud-on', 'cloud-off', 'cloud-auto', 'cloud-check', 'cloud-push', 'cloud-pull']);
   /* Облако: pull и расхождения применяются только с подтверждением; перезапись облака — только если оно не менялось или по явному «ОК». */
   async function cloudCheck(first) {
     cloudMsg = '☁ проверка…'; paintSync(); const cl = cloudApi();
@@ -318,6 +330,7 @@
     if (k.length === 1 && k[0] === 'bought' || k[0] === 'bought') S.bought[key] = v; else o[key] = v; save(); render(); });
   document.addEventListener('change', e => { const t = e.target; if (t.dataset.a !== 'state') return; const [id, layer] = t.dataset.p.split('|'); SM.model.setState(S.object, id, layer, t.value); save(); render(); });
   document.addEventListener('change', e => { const t = e.target; if (t.dataset.a !== 'measure') return; const [id, nid] = t.dataset.p.split('|'); try { SM.exec.setMeasure(S.plan.find(x => x.id === id), nid, t.value); } catch (err) { alert(err.message); } save(); });
+  document.addEventListener('change', e => { const t = e.target; if (t.dataset.a !== 'norm-ok') return; const [id, k] = t.dataset.p.split('|'); SM.norms.set(S, id, k, t.checked); save(); render(); });
   document.addEventListener('change', e => { const t = e.target; if (t.dataset.a !== 'check') return; const [id, nid] = t.dataset.p.split('|'); SM.exec.check(S.plan.find(x => x.id === id), nid, t.checked); save(); render(); });
   S = load(); SM.store.save(localStorage, S, {keepStamp: true}); render(); if (cfg().token) cloudCheck();
 })();

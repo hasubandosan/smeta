@@ -3,7 +3,7 @@
 const {JSDOM}=require('jsdom'),fs=require('fs'),R=require('path').join(__dirname,'..')+'/';
 let html=fs.readFileSync(R+'index.html','utf8').replace(/<script src="[^"]+"><\/script>/g,'');
 const w=new JSDOM(html,{runScripts:'outside-only',url:'http://localhost/'}).window;w.alert=m=>{throw new Error(m)};
-for(const f of ['core','geometry','model','seeds','rules','ver','estimate','routes','exec','fact','storage','kb','legacy','ui'])w.eval(fs.readFileSync(R+'js/'+f+'.js','utf8'));
+for(const f of ['core','geometry','model','seeds','rules','ver','estimate','routes','exec','fact','storage','kb','norms','legacy','ui'])w.eval(fs.readFileSync(R+'js/'+f+'.js','utf8'));
 const $=s=>w.document.querySelector(s),C=s=>$(s).click(),chg=(s,v)=>{const e=$(s);e.value=v;e.dispatchEvent(new w.Event('change',{bubbles:true}))};
 const tab=t=>C(`[data-a=tab][data-p=${t}]`);let ok=1;const A=(c,m)=>{console.log((c?'OK   ':'FAIL ')+m);if(!c)ok=0};
 A($('#main').textContent.includes('15,75'),'объект: пол 15,75');
@@ -44,7 +44,9 @@ A(kbRaw().topics.length===1&&kbRaw().topics[0].sections.tools.includes('Прав
 C('[data-a=kb-link]');A(kbRaw().topics[0].techIds.length===1,'справочник: тема связана с технологией проекта');tab('techs');A($('#main').textContent.includes('Справка'),'технологии: видна ссылка на справку');
 tab('kb');chg('[data-a=kb-q]','правило');A($('#main').textContent.includes('2.5.6 Стяжка пола')&&$('#main').textContent.includes('Инструменты'),'справочник: поиск находит тему и показывает раздел');C('[data-a=kb-q-clear]');
 A(JSON.parse(w.localStorage.getItem('stroysmeta:model')).updated===stamp0,'справочник: правки справочника не меняют проект (штамп проекта прежний)');
-C('[data-a=kb-del]');A(kbRaw().topics.length===0&&JSON.parse(w.localStorage.getItem('stroysmeta:kb:snaps')).length===1,'справочник: удаление темы с копией перед ним');
+tab('techs');A($('#main').textContent.includes('подтверждено 0 из 2'),'нормы: счётчик «подтверждено 0 из 2»');C('[data-a=norm-tog]');A($('#main').textContent.includes('Правило 2 м')&&!!$('[data-a=norm-ok]'),'нормы: строки справочника показаны');
+{const cb=$('[data-a=norm-ok]');cb.checked=true;cb.dispatchEvent(new w.Event('change',{bubbles:true}));}A($('#main').textContent.includes('подтверждено 1 из 2')&&Object.keys(JSON.parse(w.localStorage.getItem('stroysmeta:model')).normOk||{}).length===1,'нормы: отметка сохранена в проекте, счётчик 1 из 2');
+C('[data-a=norm-all][data-p$="|0"]');A($('#main').textContent.includes('подтверждено 0 из 2'),'нормы: «Снять все»');C('[data-a=norm-tog]');tab('kb');C('[data-a=kb-del]');A(kbRaw().topics.length===0&&JSON.parse(w.localStorage.getItem('stroysmeta:kb:snaps')).length===1,'справочник: удаление темы с копией перед ним');
 tab('data');A($('#main').textContent.includes('Справочник знаний')&&!!$('[data-a=kb-restore]'),'данные: блок справочника и возврат предыдущей версии');
 (async()=>{const msgs=[];w.alert=m=>msgs.push(m);const send=async txt=>{tab('data');const inp=$('[data-a=kb-file]');Object.defineProperty(inp,'files',{value:[{name:'kb.json',text:async()=>txt}],configurable:true});inp.dispatchEvent(new w.Event('change',{bubbles:true}));await new Promise(r=>setTimeout(r,40));};
  await send(JSON.stringify({version:1,topics:[{id:'x1',parentId:null,order:0,code:'3.2.2',title:'Плитка',sections:{accept:'1. Просвет ≤ 2 мм'},techIds:[]}]}));

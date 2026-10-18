@@ -1,0 +1,20 @@
+// Подтверждение норм: node tests/norms.test.js [путь к stroysmeta-kb.json]
+const assert = require('assert'), fs = require('fs'), SM = require('../js/core.js');
+for (const f of ['geometry', 'model', 'seeds', 'rules', 'ver', 'estimate', 'exec', 'storage', 'fact', 'kb', 'norms']) require('../js/' + f + '.js');
+const K = SM.kb, N = SM.norms; let n = 0; const t = (name, f) => { f(); n++; console.log('OK   ' + name); };
+const TOOLS = '- **Нормы расхода:**\n    - Смесь: ~ 20 кг/м² на 1 см\n    - Плёнка: нахлёст 10 см\n- Правило 2 м\n- ПРАВИЛО  2 м';
+const mk = () => { const S = SM.store.fresh(); S.materials.push({id: 'm1', name: 'Смесь', unit: 'кг', packQty: null, price: null}, {id: 'm2', name: 'Плёнка', unit: 'м2', packQty: 10, price: 500});
+  S.techs.push({id: 't1', name: '2.5.6. Стяжка', params: [], ops: [{id: 'o1', name: 'Залить', unit: 'м2', price: null, qty: 'floor', mats: [{id: 'x1', matId: 'm1', rate: ''}, {id: 'x2', matId: 'm2', rate: '1.1'}]}, {id: 'o2', name: 'Грунт', unit: 'м2', price: 0, qty: 'floor', mats: []}]});
+  const kb = K.empty(), a = K.add(kb, null, 'Стяжка', '2.5.6'); K.setSection(kb, a.id, 'tools', TOOLS); K.link(kb, a.id, 't1'); return {S, kb}; };
+
+t('строки норм: из связанных тем, группа сохранена, дубли (регистр/пробелы) убраны', () => { const {kb} = mk(), L = N.lines(kb, 't1'); assert.strictEqual(L.length, 3); assert.strictEqual(L[0].group, 'Нормы расхода'); assert.strictEqual(L[2].group, ''); assert.deepStrictEqual(N.lines(kb, 'нет'), []); });
+t('тема без связи или без раздела норм не даёт строк', () => { const kb = K.empty(), a = K.add(kb, null, 'Т', '1'); K.link(kb, a.id, 't1'); assert.deepStrictEqual(N.lines(kb, 't1'), []); const b = K.add(kb, null, 'Чужая', '2'); K.setSection(kb, b.id, 'tools', '- чужая норма'); assert.deepStrictEqual(N.lines(kb, 't1'), []); });
+t('счётчик: подтверждено X из Y, отметка и снятие, чистка пустых записей', () => { const {S, kb} = mk(), k = N.lines(kb, 't1')[0].key; let r = N.report(S, kb, S.techs[0]); assert.strictEqual(r.total, 3); assert.strictEqual(r.done, 0);
+  N.set(S, 't1', k, true); r = N.report(S, kb, S.techs[0]); assert.strictEqual(r.done, 1); assert.ok(r.lines[0].ok); N.set(S, 't1', k, false); assert.ok(!('t1' in S.normOk)); N.setAll(S, kb, 't1', true); assert.strictEqual(N.report(S, kb, S.techs[0]).done, 3); N.setAll(S, kb, 't1', false); assert.strictEqual(N.report(S, kb, S.techs[0]).done, 0); });
+t('неизвестное остаётся неизвестным: пустой расход/цена = unknown, 0 и «1.1» — заданы', () => { const {S, kb} = mk(), r = N.report(S, kb, S.techs[0]);
+  assert.ok(r.ops[0].priceUnknown && !r.ops[1].priceUnknown); assert.ok(r.ops[0].mats[0].rateUnknown && !r.ops[0].mats[1].rateUnknown); assert.ok(r.ops[0].mats[0].priceUnknown && r.ops[0].mats[0].packUnknown && !r.ops[0].mats[1].priceUnknown); assert.strictEqual(r.unknown, 2); });
+t('ничего не подставляется: смета и технология не меняются от норм и отметок', () => { const {S, kb} = mk(), before = JSON.stringify(S.techs); N.setAll(S, kb, 't1', true); N.report(S, kb, S.techs[0]); assert.strictEqual(JSON.stringify(S.techs), before); assert.ok(S.techs[0].ops[0].mats[0].rate === ''); });
+t('отметки переживают сохранение/загрузку проекта и не трогают версии технологий', () => { const {S, kb} = mk(); N.setAll(S, kb, 't1', true); const S2 = SM.store.parse(SM.store.toJson(S)); assert.strictEqual(N.report(S2, kb, S2.techs[0]).done, 3); });
+t('материал не выбран / удалён — «(не выбран)», расход неизвестен', () => { const {S, kb} = mk(); S.techs[0].ops[1].mats.push({id: 'x3', matId: '', rate: ''}); const m = N.report(S, kb, S.techs[0]).ops[1].mats[0]; assert.strictEqual(m.name, '(не выбран)'); assert.ok(m.rateUnknown && m.priceUnknown); });
+const real = process.argv[2]; if (real) { const kb = K.parse(fs.readFileSync(real, 'utf8')); let withN = 0, lines = 0; for (const tp of kb.topics) { const c = K.items(tp.sections.tools || '').length; if (c) { withN++; lines += c; } } console.log('реальный файл: тем с нормами', withN, ', строк', lines); assert.ok(withN > 0); n++; }
+console.log('Итого проверок: ' + n);
