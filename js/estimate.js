@@ -20,7 +20,7 @@
       for (const op of tech.ops) {
         if ((item.skipOps || {})[op.id]) continue;      // операция не входит в этот пункт плана (перенос из старого приложения: часть шагов не выбрана)
         const qo = (item.opQty || {})[op.id], q = SM.evalExpr(qo !== undefined && qo !== '' ? qo : op.qty, V), row = {item, tech, op, q: q.ok ? q.value : null, missing: q.unknown || [], error: q.error, work: null, mats: []};
-        if (q.ok) row.work = q.value * num(op.price);
+        row.priceUnknown = q.ok && q.value !== 0 && SM.isUnknown(op.price); if (q.ok) row.work = SM.isUnknown(op.price) ? (q.value === 0 ? 0 : null) : q.value * +op.price;   // неизвестная цена работы = неизвестно, не 0 (D3)
         for (const m of op.mats || []) { const r = SM.evalExpr(m.rate, V), n = q.ok && r.ok ? q.value * r.value : null;
           row.mats.push({matId: m.matId, need: n, missing: (r.unknown || []).concat(q.unknown || []), error: r.error});
           if (!need.has(m.matId)) need.set(m.matId, {base: 0, unknown: false}); const a = need.get(m.matId); if (n === null) a.unknown = true; else a.base += n; }
@@ -29,10 +29,10 @@
     const buy = [...need].map(([id, a]) => { const m = S.materials.find(x => x.id === id) || {name: '(удалён)', unit: ''};
       const waste = a.base * num(f.waste) / 100, reserve = (a.base + waste) * num(f.reserve) / 100, total = a.base + waste + reserve, have = num((S.bought || {})[id]), rest = Math.max(0, total - have);
       const packs = +m.packQty > 0 ? SM.packs(rest, m.packQty) : null;
-      return {id, m, base: a.base, waste, reserve, total, have, rest, packs, cost: packs !== null && !SM.isUnknown(m.price) ? packs * m.price : null, incomplete: a.unknown}; });
+      return {id, m, base: a.base, waste, reserve, total, have, rest, packs, cost: !a.unknown && packs !== null && !SM.isUnknown(m.price) ? packs * m.price : null, incomplete: a.unknown}; });
     const work = rows.reduce((s, r) => s + (r.work || 0), 0), mat = buy.reduce((s, b) => s + (b.cost || 0), 0);
     const sub = work + mat, overhead = sub * num(f.overhead) / 100, afterOv = sub + overhead, discount = afterOv * num(f.discount) / 100, vat = (afterOv - discount) * num(f.vat) / 100;
-    return {skipped, rows, buy, work, mat, total: sub, sub, overhead, discount, vat, grand: afterOv - discount + vat, incomplete: rows.some(r => r.q === null) || buy.some(b => b.incomplete || b.cost === null)};
+    return {skipped, rows, buy, work, mat, total: sub, sub, overhead, discount, vat, grand: afterOv - discount + vat, incomplete: rows.some(r => r.q === null || r.priceUnknown) || buy.some(b => b.incomplete || b.cost === null)};
   };
 })(typeof window !== 'undefined' ? window : globalThis);
 if (typeof module !== 'undefined') module.exports = (typeof window !== 'undefined' ? window : globalThis).SM;

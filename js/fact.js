@@ -32,7 +32,7 @@
   F.stock = S => { const R = SM.est.compute(S), ids = new Set(R.buy.map(b => b.id)), used = new Map();
     for (const it of S.plan) for (const [id, v] of Object.entries((it.fact || {}).mats || {})) { ids.add(id); if (!unk(v)) used.set(id, (used.get(id) || 0) + v); }
     return [...ids].map(id => { const b = R.buy.find(x => x.id === id), m = S.materials.find(x => x.id === id) || {name: '(удалён)', unit: ''}, bo = (S.bought || {})[id], have = unk(bo) ? null : +bo, u = used.has(id) ? used.get(id) : null;
-      return {id, m, planned: b ? b.total : null, have, used: u, left: have !== null && u !== null ? have - u : null, over: have !== null && u !== null && u > have}; }); };
+      return {id, m, planned: b && !b.incomplete ? b.total : null, have, used: u, left: have !== null && u !== null ? have - u : null, over: have !== null && u !== null && u > have}; }); };
 
   /* Снимок утверждённой сметы: копия значений на момент утверждения; дальнейшие правки сметы его не меняют. */
   F.approve = (S, name) => { const R = SM.est.compute(S), t = Date.now();
