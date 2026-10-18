@@ -13,7 +13,7 @@ const gist = () => { const db = {files: null, id: 'g1'}, calls = [];
   const f = async (url, o = {}) => { calls.push((o.method || 'GET') + ' ' + url.replace('https://api.github.com', ''));
     const ok = b => ({ok: true, status: 200, json: async () => b, text: async () => ''});
     if (o.method === 'POST') { db.files = JSON.parse(o.body).files; return ok({id: db.id}); }
-    if (o.method === 'PATCH') { db.files = JSON.parse(o.body).files; return ok({}); }
+    if (o.method === 'PATCH') { db.files = Object.assign(db.files || {}, JSON.parse(o.body).files); return ok({}); }
     if (url.endsWith('/gists?per_page=100')) return ok(db.files ? [{id: db.id, files: db.files}] : []);
     return ok({files: db.files}); };
   return {db, calls, f}; };

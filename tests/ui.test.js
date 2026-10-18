@@ -3,7 +3,7 @@
 const {JSDOM}=require('jsdom'),fs=require('fs'),R=require('path').join(__dirname,'..')+'/';
 let html=fs.readFileSync(R+'new.html','utf8').replace(/<script src="[^"]+"><\/script>/g,'');
 const w=new JSDOM(html,{runScripts:'outside-only',url:'http://localhost/'}).window;w.alert=m=>{throw new Error(m)};
-for(const f of ['core','geometry','model','seeds','rules','ver','estimate','routes','exec','fact','storage','legacy','ui'])w.eval(fs.readFileSync(R+'js/'+f+'.js','utf8'));
+for(const f of ['core','geometry','model','seeds','rules','ver','estimate','routes','exec','fact','storage','kb','legacy','ui'])w.eval(fs.readFileSync(R+'js/'+f+'.js','utf8'));
 const $=s=>w.document.querySelector(s),C=s=>$(s).click(),chg=(s,v)=>{const e=$(s);e.value=v;e.dispatchEvent(new w.Event('change',{bubbles:true}))};
 const tab=t=>C(`[data-a=tab][data-p=${t}]`);let ok=1;const A=(c,m)=>{console.log((c?'OK   ':'FAIL ')+m);if(!c)ok=0};
 A($('#main').textContent.includes('15,75'),'объект: пол 15,75');
@@ -36,4 +36,18 @@ const oldFx={materials:[],composites:[],tools:[],params:[{id:'f',key:'floor',lab
 w.localStorage.setItem('stroysmeta:v3',JSON.stringify(oldFx));tab('data');C('[data-a=lg-load]');A($('#main').textContent.includes('Дача')&&!!$('[data-a=lg-import]'),'перенос: объекты старого приложения прочитаны и показаны');
 C('[data-a=lg-import]');const mdl=JSON.parse(w.localStorage.getItem('stroysmeta:model'));A(mdl.object.geometry.rooms.some(r=>r.name==='Гостиная-дача')&&mdl.plan.some(p=>p.legacyObjectId==='ob9'&&p.techVer),'перенос: помещение и пункт плана появились в проекте');
 A($('#main').textContent.includes('Перенесено:'),'перенос: показан отчёт');
-process.exit(ok?0:1)
+const kbRaw=()=>JSON.parse(w.localStorage.getItem('stroysmeta:kb')||'{"topics":[]}'),stamp0=JSON.parse(w.localStorage.getItem('stroysmeta:model')).updated;w.confirm=()=>true;
+tab('kb');A($('#main').textContent.includes('Создать первую тему'),'справочник: пустое состояние предлагает создать тему или загрузить файл');
+C('[data-a=kb-add]');chg('[data-a=kb-set][data-p$="|code"]','2.5.6');chg('[data-a=kb-set][data-p$="|title"]','Стяжка пола');chg('[data-p$="|s:tools"]','- Правило **2 м**\n- <script>x</script>');
+C('[data-a=kb-edit]');A($('#main').innerHTML.includes('<b>2 м</b>')&&!$('#main').innerHTML.includes('<script>x'),'справочник: текст показан с форматированием и экранированием');
+A(kbRaw().topics.length===1&&kbRaw().topics[0].sections.tools.includes('Правило')&&kbRaw().topics[0].code==='2.5.6','справочник: правки сохранены в отдельном ключе');
+C('[data-a=kb-link]');A(kbRaw().topics[0].techIds.length===1,'справочник: тема связана с технологией проекта');tab('techs');A($('#main').textContent.includes('Справка'),'технологии: видна ссылка на справку');
+tab('kb');chg('[data-a=kb-q]','правило');A($('#main').textContent.includes('2.5.6 Стяжка пола')&&$('#main').textContent.includes('Инструменты'),'справочник: поиск находит тему и показывает раздел');C('[data-a=kb-q-clear]');
+A(JSON.parse(w.localStorage.getItem('stroysmeta:model')).updated===stamp0,'справочник: правки справочника не меняют проект (штамп проекта прежний)');
+C('[data-a=kb-del]');A(kbRaw().topics.length===0&&JSON.parse(w.localStorage.getItem('stroysmeta:kb:snaps')).length===1,'справочник: удаление темы с копией перед ним');
+tab('data');A($('#main').textContent.includes('Справочник знаний')&&!!$('[data-a=kb-restore]'),'данные: блок справочника и возврат предыдущей версии');
+(async()=>{const msgs=[];w.alert=m=>msgs.push(m);const send=async txt=>{tab('data');const inp=$('[data-a=kb-file]');Object.defineProperty(inp,'files',{value:[{name:'kb.json',text:async()=>txt}],configurable:true});inp.dispatchEvent(new w.Event('change',{bubbles:true}));await new Promise(r=>setTimeout(r,40));};
+ await send(JSON.stringify({version:1,topics:[{id:'x1',parentId:null,order:0,code:'3.2.2',title:'Плитка',sections:{accept:'1. Просвет ≤ 2 мм'},techIds:[]}]}));
+ A(kbRaw().topics.length===1&&kbRaw().topics[0].title==='Плитка'&&msgs.some(m=>m.includes('загружен')),'справочник: загрузка из файла');
+ await send('{повреждённый');A(kbRaw().topics.length===1&&msgs.some(m=>m.includes('Не удалось')),'справочник: повреждённый файл не затирает данные');
+ process.exit(ok?0:1)})();

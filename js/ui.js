@@ -35,7 +35,7 @@
   function viewTechs() {
     return '<h2>Технологии</h2><button data-a=legacy>⬇ Взять технологии и материалы из старого приложения</button><p class=hint>Технология = набор операций. У операции: единица, цена работы за единицу, формула объёма и материалы с расходом на единицу. В формулах: floor, ceiling, walls, perimeter, height, box и свои параметры технологии.</p>' +
       S.techs.map((t, ti) => `<div class=card><h3>${inp('techs.' + ti + '.name', t.name, {w: 260})} ${btn('del', 'techs.' + ti, 'Удалить технологию')}</h3>
-      ${verLine(t)}<div>Реализует процесс: ${sel('techs.' + ti + '.processId', t.processId || '', [['', '— не выбран —']].concat((S.library.processes || []).map(p => [p.id, p.name])))}</div>
+      ${verLine(t)}${kbLine(t.id)}<div>Реализует процесс: ${sel('techs.' + ti + '.processId', t.processId || '', [['', '— не выбран —']].concat((S.library.processes || []).map(p => [p.id, p.name])))}</div>
       <div>Параметры: ${(t.params || []).map((p, i) => inp(`techs.${ti}.params.${i}.key`, p.key, {w: 80, ph: 'имя'}) + '=' + inp(`techs.${ti}.params.${i}.def`, p.def, {n: 1, w: 50}) + btn('del', `techs.${ti}.params.${i}`, '✕')).join(' ')} ${btn('add', 'techs.' + ti + '.params', '＋ параметр', 'data-k=param')}</div>
       ${t.ops.map((op, oi) => `<div class=op><div>${inp(`techs.${ti}.ops.${oi}.name`, op.name, {w: 240, ph: 'Операция'})} ${btn('del', `techs.${ti}.ops.${oi}`, '✕')}</div>
         <div>ед. ${inp(`techs.${ti}.ops.${oi}.unit`, op.unit, {w: 50, ph: 'м2'})} цена ₽ ${inp(`techs.${ti}.ops.${oi}.price`, op.price, {n: 1, w: 70})} объём = ${inp(`techs.${ti}.ops.${oi}.qty`, op.qty, {w: 150, ph: 'floor'})}</div>
@@ -127,7 +127,7 @@
     return '<h2>Работы</h2><p class=hint>Статусы: запланировано → в работе → выполнено → принято. «Выполнено» меняет состояние объекта. «Принято» — только после чек-листа приёмки (его пункты — заметки «Приёмка» у операций технологии). Факт (объём, стоимость, расход материалов) вносится после начала работы и не меняет смету.</p>' + (REP.items.length ? `<div class=card><b>Итого по начатым работам:</b> план ${f2(REP.planWork)} ₽, факт ${f2(REP.factWork)} ₽ (стоимость указана по ${REP.costKnown} операциям)${REP.incomplete ? `<div class=warn>⚠ У выполненных работ не указана стоимость по ${REP.costMissing} операциям — факт неполный.</div>` : ''}</div>` : '') + o.geometry.rooms.map(r => {
       const items = S.plan.filter(p => p.roomId === r.id); if (!items.length) return '';
       return `<div class=card><h3>${esc(r.name)}</h3>` + items.map(it => { const v = SM.exec.view(S, it), t = SM.ver.resolve(S, it);
-        return `<div class=op><b>${esc(t ? t.name : '(удалена)')}</b> <span class=hint>${it.techVer ? 'v' + it.techVer : ''}</span> — ${SM.exec.LABEL[v.status]}${verNote(it)}
+        return `<div class=op><b>${esc(t ? t.name : '(удалена)')}</b> <span class=hint>${it.techVer ? 'v' + it.techVer : ''}</span> — ${SM.exec.LABEL[v.status]}${verNote(it)}${kbLine(it.techId)}
           ${v.status === 'PLANNED' ? (v.canStart ? btn('w-start', it.id, 'Начать') : v.waits.map(x => `<div class=warn>⛔ ${esc(x)}</div>`).join('')) : ''}
           ${v.status === 'IN_PROGRESS' ? btn('w-complete', it.id, 'Выполнено') : ''}${v.status === 'COMPLETED' ? btn('w-accept', it.id, 'Принять') : ''}
           ${v.conditions.map(x => `<div class=hint>Условие: ${esc(x)}</div>`).join('')}${v.errors.map(x => `<div class=warn>Частая ошибка: ${esc(x)}</div>`).join('')}
@@ -135,6 +135,48 @@
           ${v.checklist.length ? '<div><b>Приёмка</b></div>' + v.checklist.map(c => `<label style="display:block"><input type=checkbox data-a=check data-p="${it.id}|${c.id}" ${c.done ? 'checked' : ''} ${v.status === 'PLANNED' || v.status === 'ACCEPTED' ? 'disabled' : ''}> ${esc(c.text)}</label>`).join('') : ''}</div>`; }).join('') + '</div>'; }).join('') || '<i class=hint>План пуст — добавьте технологии в план во вкладке «Состояние».</i>';
   }
   function download(name, text, type) { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], {type: type || 'application/json'})); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000); }
+  // ---------- Справочник (отдельное хранилище stroysmeta:kb, правится только здесь) ----------
+  let KB = SM.kb.empty(), kbLocked = false, kbSelId = null, kbEdit = false, kbQ = '', kbOpen = new Set();
+  try { KB = SM.kb.load(localStorage); } catch (e) { kbLocked = true; alert('Справочник не прочитан: ' + e.message + '. Его данные не тронуты и не будут перезаписаны; загрузите копию из файла во вкладке «Данные».'); }
+  function saveKb(o) { if (kbLocked) return alert('Справочник не прочитан — правки не сохраняются. Загрузите копию из файла (вкладка «Данные»).'); const r = SM.kb.save(localStorage, KB, o); if (!r.ok) alert('Справочник не сохранён: ' + r.error + '. Скачайте копию во вкладке «Данные».'); }
+  const kbLine = techId => { const ts = SM.kb.forTech(KB, techId); return ts.length ? `<div class=hint>📖 Справка: ${ts.map(x => btn('kb-open', x.id, esc(SM.kb.label(x)), 'class=kbl')).join(' ')}</div>` : ''; };
+  function kbTree(pid, d) { return SM.kb.children(KB, pid).map(t => { const ch = SM.kb.children(KB, t.id), open = kbOpen.has(t.id);
+    return `<div class="kbrow ${t.id === kbSelId ? 'on' : ''}" style="padding-left:${d * 14}px">${ch.length ? btn('kb-tog', t.id, open ? '▾' : '▸', 'class=kbc') : '<span class=kbc></span>'}<button class=kbl data-a=kb-sel data-p="${t.id}" title="${esc(SM.kb.label(t))}">${esc(SM.kb.label(t))}</button></div>` + (ch.length && open ? kbTree(t.id, d + 1) : ''); }).join(''); }
+  function kbTopic() {
+    const K = SM.kb, t = kbSelId && K.byId(KB, kbSelId); if (!t) return '<div class="card hint">Выберите тему слева.</div>';
+    const crumbs = K.path(KB, t.id).slice(0, -1).map(x => btn('kb-open', x.id, esc(K.label(x)), 'class=kbl')).join(' › '), kids = K.children(KB, t.id), techs = t.techIds.map(id => S.techs.find(x => x.id === id)).filter(Boolean);
+    const sub = new Set([t.id]); (function g(i) { K.children(KB, i).forEach(c => { sub.add(c.id); g(c.id); }); })(t.id);
+    const head = kbEdit ? `<h3><input data-a=kb-set data-p="${t.id}|code" value="${esc(t.code)}" placeholder="№" style="width:80px"> <input data-a=kb-set data-p="${t.id}|title" value="${esc(t.title)}" style="width:70%"></h3>` : `<h3>${esc(K.label(t))}</h3>`;
+    const secs = K.SECTIONS.map(([k, lb]) => { const v = t.sections[k] || '';
+      return kbEdit ? `<div><b>${esc(lb)}</b><br><textarea data-a=kb-set data-p="${t.id}|s:${k}" rows="${Math.min(18, Math.max(3, v.split('\n').length + 1))}" style="width:100%">${esc(v)}</textarea></div>` : (v ? `<h4>${esc(lb)}</h4><div class=kbtext>${K.html(v)}</div>` : ''); }).join('');
+    const move = kbEdit ? `<div>Перенести в: <select data-a=kb-set data-p="${t.id}|parent">${[['', '— корень —']].concat(KB.topics.filter(x => !sub.has(x.id)).map(x => [x.id, K.label(x)])).map(([k, l]) => `<option value="${esc(k)}" ${k === (t.parentId || '') ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></div>` : '';
+    return `<div class=card><div class=hint>${crumbs}</div>${head}<div>${btn('kb-edit', '', kbEdit ? '✓ Готово' : '✎ Править')} ${btn('kb-add', t.id, '＋ Подтема')} ${btn('kb-del', t.id, 'Удалить тему')}</div>${move}
+      ${secs || '<div class=hint>Тема пуста — нажмите «Править», чтобы добавить текст.</div>'}</div>
+      <div class=card><b>Соответствует технологиям проекта:</b> ${techs.map(x => esc(x.name) + ' ' + btn('kb-unlink', t.id + '|' + x.id, '✕')).join('; ') || '<span class=hint>пока никаких — справка появится в карточках технологий и работ только после связи</span>'}<br>
+        <select id=kbtech>${S.techs.filter(x => !t.techIds.includes(x.id)).map(x => `<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('')}</select> ${btn('kb-link', t.id, 'Связать')}</div>
+      ${kids.length ? `<div class=card><b>Подтемы:</b> ${kids.map(c => btn('kb-open', c.id, esc(K.label(c)), 'class=kbl')).join(' · ')}</div>` : ''}`;
+  }
+  function viewKb() {
+    const K = SM.kb;
+    if (!KB.topics.length) return `<h2>Справочник</h2><div class=card><p>Знания по этапам: инструменты и нормы, условия, ошибки, приёмка. Хранится отдельно от проекта и правится только здесь.</p>
+      <p>Загрузить готовый файл справочника: <input type=file accept=".json,application/json" data-a=kb-file></p><p class=hint>или начать с пустого:</p>${btn('kb-add', '', '＋ Создать первую тему')}</div>`;
+    const res = kbQ ? K.search(KB, kbQ, 60) : null;
+    const left = res ? (res.map(r => `<div>${btn('kb-open', r.topic.id, esc(K.label(r.topic)), 'class=kbl')}<div class=hint style="margin-left:6px">${esc(r.where.map(w => K.SECTIONS.find(s => s[0] === w)[1]).join(', '))}${r.snippet ? ' — …' + esc(r.snippet) + '…' : ''}</div></div>`).join('') || '<div class=hint>Ничего не найдено.</div>') : kbTree(null, 0);
+    return `<h2>Справочник <span class=hint>(${KB.topics.length} тем)</span></h2>
+      <div><input data-a=kb-q value="${esc(kbQ)}" placeholder="поиск по всем темам (Enter)" style="width:260px"> ${kbQ ? btn('kb-q-clear', '', '✕') : ''} ${btn('kb-add', '', '＋ Тема в корне')} ${btn('kb-auto', '', 'Связать с технологиями по номеру этапа')}</div>
+      <div class=kbgrid><div class="card kbtree">${left}</div><div>${kbTopic()}</div></div>`;
+  }
+  function kbDataBlock() { const c = cfg(), snaps = SM.kb.snaps(localStorage);
+    return `<div class=card><h3>Справочник знаний</h3><p class=hint>Хранится отдельно от проекта: в этом браузере и (по кнопке) отдельным файлом в вашем приватном Gist. Тем: ${KB.topics.length}, текста ≈ ${Math.round(SM.kb.size(KB) / 1024)} КБ.</p>
+      <button data-a=kb-export>⬇ Скачать копию справочника</button> <label>⬆ Загрузить из файла: <input type=file accept=".json,application/json" data-a=kb-file></label>
+      ${c.token && c.gistId ? `<div>${btn('kb-cloud-push', '', '☁ Отправить справочник в облако')} ${btn('kb-cloud-pull', '', '☁ Загрузить справочник из облака')}</div>` : '<p class=hint>Подключите облако выше — тогда справочник можно отправлять в облако и забирать оттуда.</p>'}
+      ${snaps.length ? `<div>${btn('kb-restore', '', 'Вернуть предыдущую версию справочника от ' + new Date(snaps[snaps.length - 1].t).toLocaleString('ru-RU'))}</div>` : ''}</div>`; }
+  async function kbCloudPush() { try { const cl = cloudApi(), txt = await cl.getFile(SM.kb.GFILE); let r = null; if (txt) { try { r = SM.kb.parse(txt); } catch (e) { r = null; } }
+      if (r && r.updated > KB.updated && !confirm('В облаке справочник новее вашего. Перезаписать его текущим? Облачная версия будет потеряна.')) return render();
+      if (r && r.topics.length && !KB.topics.length && !confirm('Локальный справочник пуст, а в облаке он есть. Перезаписать облако пустым?')) return render();
+      await cl.putFile(SM.kb.GFILE, SM.kb.toJson(KB)); alert('Справочник отправлен в облако'); } catch (e) { alert('Облако: ' + e.message); } render(); }
+  async function kbCloudPull() { try { const txt = await cloudApi().getFile(SM.kb.GFILE); if (!txt) return alert('В облаке нет справочника'); const d = SM.kb.parse(txt);
+      if (confirm('Заменить локальный справочник облачным (тем: ' + d.topics.length + ')? Текущий сохранится в копию.')) { SM.kb.snap(localStorage, KB); KB = d; kbLocked = false; kbSelId = null; saveKb({keepStamp: true}); } } catch (e) { alert('Облако: ' + e.message); } render(); }
   let LG = null;   // прочитанные данные старого приложения {data, objs, src, report}
   function lgBlock() {
     const r = LG && LG.report, list = LG ? LG.objs.map(o => `<div>• <b>${esc(o.name)}</b> — помещений ${o.rooms}, выбрано этапов ${o.stages}, доп. позиций ${o.extras} ${btn('lg-import', o.id, 'Перенести в проект')}</div>`).join('') || '<div class=hint>В старых данных нет объектов.</div>' : '';
@@ -154,12 +196,13 @@
         <button data-a=export-json>⬇ Скачать копию (JSON)</button> <button data-a=export-xlsx>⬇ Смета в Excel</button> <label>⬆ Загрузить копию: <input type=file accept=".json,application/json" data-a=import-json></label></div>
       <div class=card><h3>Облако (GitHub Gist)</h3>${cloud}</div>
       ${lgBlock()}
+      ${kbDataBlock()}
       <div class=card><h3>Точки отката</h3><p class=hint>Делаются сами (не чаще раза в 5 минут, последние ${SM.store.MAX_SNAPS}) и перед любой заменой данных.</p>
         ${sn.length ? '<table>' + sn.map((x, i) => [x, i]).reverse().map(([x, i]) => `<tr><td>${new Date(x.t).toLocaleString('ru-RU')}<td>${btn('restore-snap', i, 'Вернуть')}</tr>`).join('') + '</table>' : '<div class=hint>Появятся после первых изменений.</div>'}
         ${btn('snap-now', '', 'Сделать точку отката сейчас')}</div>`;
   }
-  const VIEWS = {object: viewObject, state: viewState, routes: viewRoutes, works: viewWorks, techs: viewTechs, materials: viewMaterials, estimate: viewEstimate, buy: viewBuy, data: viewData};
-  const TABS = [['object', 'Объект'], ['state', 'Состояние'], ['routes', 'Маршруты'], ['works', 'Работы'], ['techs', 'Технологии'], ['materials', 'Материалы'], ['estimate', 'Смета'], ['buy', 'Закупка'], ['data', 'Данные']];
+  const VIEWS = {object: viewObject, state: viewState, routes: viewRoutes, works: viewWorks, techs: viewTechs, materials: viewMaterials, estimate: viewEstimate, buy: viewBuy, kb: viewKb, data: viewData};
+  const TABS = [['object', 'Объект'], ['state', 'Состояние'], ['routes', 'Маршруты'], ['works', 'Работы'], ['techs', 'Технологии'], ['materials', 'Материалы'], ['estimate', 'Смета'], ['buy', 'Закупка'], ['kb', 'Справочник'], ['data', 'Данные']];
   function render() { const y = scrollY; $('nav').innerHTML = TABS.map(([k, t]) => `<button class="${k === tab ? 'on' : ''}" data-a=tab data-p=${k}>${t}</button>`).join('') + '<span id=sync class=hint style="padding:8px;white-space:nowrap"></span>'; paintSync(); $('main').innerHTML = VIEWS[tab](); scrollTo(0, y); }
   const NEW = {tech: () => ({id: uid(), name: 'Новая технология', params: [], ops: []}), op: () => ({id: uid(), name: '', unit: 'м2', price: null, qty: '', mats: []}), mat: () => ({id: uid(), matId: '', rate: ''}),
     route: () => ({id: uid(), name: 'Новый маршрут', roomId: S.object.geometry.rooms[0] ? S.object.geometry.rooms[0].id : '', steps: [], assume: []}), rstep: () => ({processId: '', techId: ''}), rassume: () => ({kind: 'floor', layer: '', value: 'YES'}),
@@ -187,6 +230,22 @@
       if (!raw) return alert('Старые данные в этом браузере не найдены. Откройте new.html с того же адреса, что и старое приложение, или загрузите файл копии.'); lgSet(JSON.parse(raw), 'этот браузер'); },
     'lg-import'(id) { const o = LG.data.objects.find(x => x.id === id); if (!o || !confirm('Перенести объект «' + o.name + '» в текущий проект? Текущие данные сохранятся в точку отката.')) return;
       try { SM.store.snap(localStorage, S, true); const C = JSON.parse(JSON.stringify(S)); LG.report = SM.legacy.importObject(LG.data, o, C); S = C; } catch (e) { alert('Перенос не выполнен, данные не тронуты: ' + e.message); } },
+    'kb-sel'(id) { kbSelId = id; kbEdit = false; },
+    'kb-open'(id) { tab = 'kb'; kbQ = ''; kbSelId = id; kbEdit = false; SM.kb.path(KB, id).slice(0, -1).forEach(x => kbOpen.add(x.id)); },
+    'kb-tog'(id) { kbOpen.has(id) ? kbOpen.delete(id) : kbOpen.add(id); },
+    'kb-edit'() { kbEdit = !kbEdit; },
+    'kb-q-clear'() { kbQ = ''; },
+    'kb-add'(pid) { const t = SM.kb.add(KB, pid || null, 'Новая тема'); if (pid) kbOpen.add(pid); kbSelId = t.id; kbEdit = true; saveKb(); },
+    'kb-del'(id) { const t = SM.kb.byId(KB, id), n = SM.kb.children(KB, id).length;
+      if (!t || !confirm('Удалить тему «' + SM.kb.label(t) + '»' + (n ? ' вместе с подтемами' : '') + '? Перед удалением делается копия справочника.')) return;
+      SM.kb.snap(localStorage, KB); kbSelId = t.parentId; SM.kb.remove(KB, id); saveKb(); },
+    'kb-link'(id) { const v = $('kbtech') && $('kbtech').value; if (!v) return alert('Нет технологий для связи'); SM.kb.link(KB, id, v); saveKb(); },
+    'kb-unlink'(p) { const [id, techId] = p.split('|'); SM.kb.unlink(KB, id, techId); saveKb(); },
+    'kb-auto'() { const n = SM.kb.autoLink(KB, S.techs); saveKb(); alert(n ? 'Связано тем с технологиями: ' + n : 'Новых связей не найдено (ищется номер этапа в названии технологии, например «2.5.6.»)'); },
+    'kb-export'() { download('stroysmeta-kb_' + new Date().toISOString().slice(0, 10) + '.json', SM.kb.toJson(KB)); },
+    'kb-restore'() { const a = SM.kb.snaps(localStorage), i = a.length - 1; if (i < 0) return; try { const d = SM.kb.snapData(localStorage, i);
+      if (confirm('Вернуть справочник на состояние от ' + new Date(a[i].t).toLocaleString('ru-RU') + '? Текущий сохранится в копию.')) { SM.kb.snap(localStorage, KB); KB = d; kbLocked = false; kbSelId = null; saveKb({keepStamp: true}); } } catch (e) { alert(e.message); } },
+    'kb-cloud-push'() { kbCloudPush(); }, 'kb-cloud-pull'() { kbCloudPull(); },
     approve() { SM.fact.approve(S, $('an') ? $('an').value : ''); },
     'export-json'() { download('stroysmeta_' + new Date().toISOString().slice(0, 10) + '.json', SM.store.toJson(S)); },
     'export-xlsx'() { if (!window.XLSX) return alert('Библиотека Excel не загрузилась — нужен интернет.');
@@ -226,6 +285,14 @@
   function lgSet(d, src) { if (!d || !Array.isArray(d.stages) || !Array.isArray(d.objects)) return alert('Это не копия старого приложения «Смета»');
     if (d.objects.some(o => o.items || o.params)) return alert('Файл старого формата: откройте старое приложение (index.html) один раз — оно обновит данные, потом прочитайте из браузера.');
     LG = {data: d, objs: SM.legacy.objects(d), src}; }
+  document.addEventListener('change', async e => { const t = e.target; if (t.dataset.a !== 'kb-file' || !t.files[0]) return;
+    try { const d = SM.kb.parse(await t.files[0].text());
+      if (!KB.topics.length || confirm('Заменить справочник (тем: ' + KB.topics.length + ') данными из файла (тем: ' + d.topics.length + ')? Ваши правки в текущем справочнике будут заменены; перед этим делается копия.')) { SM.kb.snap(localStorage, KB); KB = d; kbLocked = false; kbSelId = null; saveKb(); alert('Справочник загружен: тем ' + d.topics.length); } }
+    catch (err) { alert('Не удалось загрузить: ' + err.message); } t.value = ''; render(); });
+  document.addEventListener('change', e => { const t = e.target, a = t.dataset.a; if (a !== 'kb-set' && a !== 'kb-q') return;
+    if (a === 'kb-q') { kbQ = t.value.trim(); return render(); }
+    const [id, f] = t.dataset.p.split('|'); try { if (f === 'title' || f === 'code') SM.kb.update(KB, id, {[f]: t.value}); else if (f === 'parent') { SM.kb.move(KB, id, t.value || null); if (t.value) kbOpen.add(t.value); } else if (f.startsWith('s:')) SM.kb.setSection(KB, id, f.slice(2), t.value); } catch (err) { alert(err.message); }
+    saveKb(); if (!f.startsWith('s:')) render(); });
   document.addEventListener('change', async e => { const t = e.target; if (t.dataset.a !== 'lg-file' || !t.files[0]) return;
     try { lgSet(JSON.parse(await t.files[0].text()), 'файл ' + t.files[0].name); } catch (err) { alert('Не удалось прочитать файл: ' + err.message); } t.value = ''; render(); });
   document.addEventListener('change', e => { const t = e.target; if (t.dataset.a !== 'fact') return; const [id, kind, x, field] = t.dataset.p.split('|'), it = S.plan.find(p => p.id === id), v = t.value.trim().replace(',', '.');
@@ -234,7 +301,7 @@
     try { const next = SM.store.parse(await t.files[0].text());
       if (confirm('Заменить текущие данные данными из файла «' + t.files[0].name + '»? Текущие сохранятся в точку отката.')) S = SM.store.replace(localStorage, S, next); } catch (err) { alert('Не удалось загрузить: ' + err.message); }
     t.value = ''; render(); });
-  document.addEventListener('click', e => { const b = e.target.closest('button[data-a]'); if (!b) return; const a = A[b.dataset.a]; if (a) { a(b.dataset.p, b); if (!NOSAVE.has(b.dataset.a)) save(); render(); } });
+  document.addEventListener('click', e => { const b = e.target.closest('button[data-a]'); if (!b) return; const a = A[b.dataset.a]; if (a) { a(b.dataset.p, b); if (!NOSAVE.has(b.dataset.a) && !b.dataset.a.startsWith('kb-')) save(); render(); } });
   document.addEventListener('change', e => { const t = e.target; if (t.dataset.a !== 'set') return; const k = t.dataset.p.split('.'), key = k.pop(), o = get(k.join('.') || '');
     let v = t.value.trim(); if (t.dataset.n) { v = v === '' ? null : parseFloat(v.replace(',', '.')); if (v !== null && !isFinite(v)) v = null; }
     if (k.length === 1 && k[0] === 'bought' || k[0] === 'bought') S.bought[key] = v; else o[key] = v; save(); render(); });

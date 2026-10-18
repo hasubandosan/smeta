@@ -2,3 +2,6 @@ node_modules/
 package.json
 package-lock.json
 *.patch
+# личные данные справочника (заметки из Obsidian) — репозиторий публичный, не коммитить
+stroysmeta-kb*.json
+*.kb.json

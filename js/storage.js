@@ -83,6 +83,10 @@
       else c.gistId = (await gh('POST', '/gists', {description: 'Помощник строителя — данные (не удалять)', public: false, files})).id;
       c.lastSync = S.updated || 0; St.setCfg(ls, c); return c.gistId;
     };
+    /* Дополнительные файлы в том же приватном Gist (например, справочник). PATCH другие файлы Gist не затрагивает. */
+    api.putFile = async (name, text) => { const c = St.cfg(ls); if (!c.token || !c.gistId) throw new Error('облако не подключено'); await gh('PATCH', '/gists/' + c.gistId, {files: {[name]: {content: String(text)}}}); };
+    api.getFile = async name => { const c = St.cfg(ls); if (!c.token || !c.gistId) throw new Error('облако не подключено'); const g = await gh('GET', '/gists/' + c.gistId), f = g.files && g.files[name];
+      return f ? (f.truncated ? await (await fetchFn(f.raw_url)).text() : f.content) : null; };
     /* Сверка: ничего не меняет у человека. Возвращает {action, remote}. push выполняется здесь (облако старше и не менялось). */
     api.check = async S => {
       const c = St.cfg(ls); if (!c.token) return {action: 'off'};
