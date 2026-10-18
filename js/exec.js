@@ -6,15 +6,15 @@
   'use strict';
   const SM = root.SM = root.SM || {}, X = SM.exec = {};
   X.LABEL = {PLANNED: 'Запланировано', IN_PROGRESS: 'В работе', COMPLETED: 'Выполнено', ACCEPTED: 'Принято'};
-  const notes = (tech, cat) => (tech ? tech.ops : []).flatMap(op => (op.notes || []).filter(n => n.cat === cat && n.text).map(n => Object.assign({op: op.name}, n)));
+  const notes = (tech, cat, item) => (tech ? tech.ops : []).filter(op => !(item && (item.skipOps || {})[op.id])).flatMap(op => (op.notes || []).filter(n => n.cat === cat && n.text).map(n => Object.assign({op: op.name}, n)));
   const procStatus = (S, item) => { if (!item.processId || !S.library) return null;
     try { return SM.rules.plan(S.object, S.library, item.roomId).items.find(x => x.id === item.processId) || null; } catch (e) { return null; } };
 
   X.view = (S, item) => { const tech = (SM.ver ? SM.ver.resolve(S, item) : S.techs.find(t => t.id === item.techId)), ps = procStatus(S, item), checks = item.checks || {};
-    const list = notes(tech, 'accept').map(n => ({id: n.id, text: n.text, done: !!checks[n.id]}));
+    const list = notes(tech, 'accept', item).map(n => ({id: n.id, text: n.text, done: !!checks[n.id]}));
     const st = item.status || 'PLANNED', waits = ps && ps.status !== 'READY' && ps.status !== 'DONE' ? ps.reasons.length ? ps.reasons : ['Процесс пока нельзя начинать'] : [];
     return {status: st, canStart: st === 'PLANNED' && !waits.length, waits, process: ps, checklist: list, allChecked: list.every(x => x.done),
-      conditions: notes(tech, 'cond').map(n => n.text), errors: notes(tech, 'error').map(n => n.text)};
+      conditions: notes(tech, 'cond', item).map(n => n.text), errors: notes(tech, 'error', item).map(n => n.text)};
   };
   X.start = (S, item) => { const v = X.view(S, item); if (v.status !== 'PLANNED') throw new Error('Работа уже не в статусе «Запланировано»');
     if (v.waits.length) throw new Error('Нельзя начать: ' + v.waits.join('; ')); item.status = 'IN_PROGRESS'; return item; };

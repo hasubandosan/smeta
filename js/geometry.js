@@ -44,7 +44,7 @@
       // проёмы без привязки к стене (wallId пуст, но roomId = это помещение): на площадь стен в целом влияют так же
       let loose = 0, looseBad = false;
       for (const o of model.openings || []) if (!o.wallId && o.roomId === room.id) {
-        if (unk(o.w) || unk(o.h)) { issues.push('не указан размер проёма «' + (o.kind || o.id) + '»'); looseBad = true; } else loose += o.w * o.h;
+        if (!unk(o.area)) loose += +o.area; else if (unk(o.w) || unk(o.h)) { issues.push('не указан размер проёма «' + (o.kind || o.id) + '»'); looseBad = true; } else loose += o.w * o.h;
       }
       if (loose) issues.push('есть проёмы без привязки к стене: общая площадь стен верна, по отдельным стенам — нет');
       if (wallOk && !looseBad) { R.wallArea = wa - loose; R.openingsArea = oa + loose; }

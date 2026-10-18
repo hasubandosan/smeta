@@ -135,6 +135,14 @@
           ${v.checklist.length ? '<div><b>Приёмка</b></div>' + v.checklist.map(c => `<label style="display:block"><input type=checkbox data-a=check data-p="${it.id}|${c.id}" ${c.done ? 'checked' : ''} ${v.status === 'PLANNED' || v.status === 'ACCEPTED' ? 'disabled' : ''}> ${esc(c.text)}</label>`).join('') : ''}</div>`; }).join('') + '</div>'; }).join('') || '<i class=hint>План пуст — добавьте технологии в план во вкладке «Состояние».</i>';
   }
   function download(name, text, type) { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], {type: type || 'application/json'})); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000); }
+  let LG = null;   // прочитанные данные старого приложения {data, objs, src, report}
+  function lgBlock() {
+    const r = LG && LG.report, list = LG ? LG.objs.map(o => `<div>• <b>${esc(o.name)}</b> — помещений ${o.rooms}, выбрано этапов ${o.stages}, доп. позиций ${o.extras} ${btn('lg-import', o.id, 'Перенести в проект')}</div>`).join('') || '<div class=hint>В старых данных нет объектов.</div>' : '';
+    return `<div class=card><h3>Перенос объектов из старого приложения</h3><p class=hint>Помещения становятся геометрией, выбранные этапы — планом работ по помещениям. Ничего не удаляется, перед переносом делается точка отката; повторный перенос того же объекта ничего не дублирует. Технологии и материалы переносятся кнопкой на вкладке «Технологии» или автоматически вместе с объектом.</p>
+      <button data-a=lg-load>Прочитать из этого браузера</button> <label>или файл копии старого приложения: <input type=file accept=".json,application/json" data-a=lg-file></label>
+      ${LG ? `<p class=hint>Источник: ${esc(LG.src)}</p>${list}` : ''}
+      ${r ? `<div class=card><b>Перенесено:</b> помещений ${r.rooms}, пунктов плана ${r.items}, технологий ${r.techs}, материалов ${r.materials}.${r.skipped.length ? '<div class=warn>Не перенесено:</div>' + r.skipped.map(x => `<div>• ${esc(x.name)} — ${esc(x.reason)}</div>`).join('') : ''}${r.notes.length ? '<div class=hint>Замечания:</div>' + r.notes.map(x => `<div class=hint>• ${esc(x)}</div>`).join('') : ''}</div>` : ''}</div>`;
+  }
   function viewData() {
     const c = cfg(), sn = SM.store.snaps(localStorage);
     const cloud = c.token ? `<p class=hint>Подключено. ${esc(cloudMsg)}</p><div><button data-a=cloud-check>Сверить</button> <button data-a=cloud-push>Отправить сейчас</button> <button data-a=cloud-pull>Загрузить из облака</button> <button data-a=cloud-auto>Автоотправка: ${c.auto !== false ? 'вкл' : 'выкл'}</button> <button data-a=cloud-off>Отключить</button></div>
@@ -145,6 +153,7 @@
       <div class=card><h3>Копия на компьютер</h3><p class=hint>Весь проект одним файлом. Загрузка файла заменяет текущие данные, но перед этим автоматически делается точка отката.</p>
         <button data-a=export-json>⬇ Скачать копию (JSON)</button> <button data-a=export-xlsx>⬇ Смета в Excel</button> <label>⬆ Загрузить копию: <input type=file accept=".json,application/json" data-a=import-json></label></div>
       <div class=card><h3>Облако (GitHub Gist)</h3>${cloud}</div>
+      ${lgBlock()}
       <div class=card><h3>Точки отката</h3><p class=hint>Делаются сами (не чаще раза в 5 минут, последние ${SM.store.MAX_SNAPS}) и перед любой заменой данных.</p>
         ${sn.length ? '<table>' + sn.map((x, i) => [x, i]).reverse().map(([x, i]) => `<tr><td>${new Date(x.t).toLocaleString('ru-RU')}<td>${btn('restore-snap', i, 'Вернуть')}</tr>`).join('') + '</table>' : '<div class=hint>Появятся после первых изменений.</div>'}
         ${btn('snap-now', '', 'Сделать точку отката сейчас')}</div>`;
@@ -174,6 +183,10 @@
     'plan-add'() { const it = {id: uid(), techId: $('pt').value, roomId: $('pr').value, values: {}}; S.plan.push(it); SM.ver.pin(S, it); },
     'ver-update'(id) { try { SM.ver.update(S, S.plan.find(x => x.id === id)); } catch (e) { alert(e.message); } },
     'ver-release'(id) { try { SM.ver.release(S, id); } catch (e) { alert(e.message); } },
+    'lg-load'() { let raw = null; try { raw = localStorage.getItem('stroysmeta:v3'); } catch (e) {}
+      if (!raw) return alert('Старые данные в этом браузере не найдены. Откройте new.html с того же адреса, что и старое приложение, или загрузите файл копии.'); lgSet(JSON.parse(raw), 'этот браузер'); },
+    'lg-import'(id) { const o = LG.data.objects.find(x => x.id === id); if (!o || !confirm('Перенести объект «' + o.name + '» в текущий проект? Текущие данные сохранятся в точку отката.')) return;
+      try { SM.store.snap(localStorage, S, true); const C = JSON.parse(JSON.stringify(S)); LG.report = SM.legacy.importObject(LG.data, o, C); S = C; } catch (e) { alert('Перенос не выполнен, данные не тронуты: ' + e.message); } },
     approve() { SM.fact.approve(S, $('an') ? $('an').value : ''); },
     'export-json'() { download('stroysmeta_' + new Date().toISOString().slice(0, 10) + '.json', SM.store.toJson(S)); },
     'export-xlsx'() { if (!window.XLSX) return alert('Библиотека Excel не загрузилась — нужен интернет.');
@@ -187,7 +200,7 @@
     'cloud-auto'() { const c = cfg(); c.auto = c.auto === false; SM.store.setCfg(localStorage, c); },
     'cloud-check'() { cloudCheck(); }, 'cloud-push'() { cloudPush(); }, 'cloud-pull'() { cloudPull(); }
   };
-  const NOSAVE = new Set(['tab', 'export-json', 'export-xlsx', 'snap-now', 'restore-snap', 'cloud-on', 'cloud-off', 'cloud-auto', 'cloud-check', 'cloud-push', 'cloud-pull']);
+  const NOSAVE = new Set(['tab', 'lg-load', 'export-json', 'export-xlsx', 'snap-now', 'restore-snap', 'cloud-on', 'cloud-off', 'cloud-auto', 'cloud-check', 'cloud-push', 'cloud-pull']);
   /* Облако: pull и расхождения применяются только с подтверждением; перезапись облака — только если оно не менялось или по явному «ОК». */
   async function cloudCheck(first) {
     cloudMsg = '☁ проверка…'; paintSync(); const cl = cloudApi();
@@ -210,6 +223,11 @@
       if (confirm('Заменить данные здесь данными из облака? Текущие сохранятся в точку отката.')) { S = cl.adopt(S, r); cloudMsg = '☁ загружено ' + stamp(); } }
     catch (e) { cloudMsg = '☁ ошибка: ' + e.message; }
     render(); }
+  function lgSet(d, src) { if (!d || !Array.isArray(d.stages) || !Array.isArray(d.objects)) return alert('Это не копия старого приложения «Смета»');
+    if (d.objects.some(o => o.items || o.params)) return alert('Файл старого формата: откройте старое приложение (index.html) один раз — оно обновит данные, потом прочитайте из браузера.');
+    LG = {data: d, objs: SM.legacy.objects(d), src}; }
+  document.addEventListener('change', async e => { const t = e.target; if (t.dataset.a !== 'lg-file' || !t.files[0]) return;
+    try { lgSet(JSON.parse(await t.files[0].text()), 'файл ' + t.files[0].name); } catch (err) { alert('Не удалось прочитать файл: ' + err.message); } t.value = ''; render(); });
   document.addEventListener('change', e => { const t = e.target; if (t.dataset.a !== 'fact') return; const [id, kind, x, field] = t.dataset.p.split('|'), it = S.plan.find(p => p.id === id), v = t.value.trim().replace(',', '.');
     try { if (kind === 'op') SM.fact.setOp(it, x, field, v); else SM.fact.setMat(it, x, v); } catch (err) { alert(err.message); } save(); render(); });
   document.addEventListener('change', async e => { const t = e.target; if (t.dataset.a !== 'import-json' || !t.files[0]) return;

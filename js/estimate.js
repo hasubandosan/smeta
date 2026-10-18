@@ -18,7 +18,8 @@
       try { const P = cache[item.roomId] || (cache[item.roomId] = SM.rules.plan(S.object, S.library, item.roomId)), it = P.items.find(x => x.id === item.processId); return !!it && it.status === 'DONE'; } catch (e) { return false; } };
     for (const item of S.plan) { const tech = (SM.ver ? SM.ver.resolve(S, item) : S.techs.find(t => t.id === item.techId)); if (!tech) continue; if (isDone(item)) { skipped.push(item.id); continue; } const V = E.vars(S, item, tech);
       for (const op of tech.ops) {
-        const q = SM.evalExpr(op.qty, V), row = {item, tech, op, q: q.ok ? q.value : null, missing: q.unknown || [], error: q.error, work: null, mats: []};
+        if ((item.skipOps || {})[op.id]) continue;      // операция не входит в этот пункт плана (перенос из старого приложения: часть шагов не выбрана)
+        const qo = (item.opQty || {})[op.id], q = SM.evalExpr(qo !== undefined && qo !== '' ? qo : op.qty, V), row = {item, tech, op, q: q.ok ? q.value : null, missing: q.unknown || [], error: q.error, work: null, mats: []};
         if (q.ok) row.work = q.value * num(op.price);
         for (const m of op.mats || []) { const r = SM.evalExpr(m.rate, V), n = q.ok && r.ok ? q.value * r.value : null;
           row.mats.push({matId: m.matId, need: n, missing: (r.unknown || []).concat(q.unknown || []), error: r.error});

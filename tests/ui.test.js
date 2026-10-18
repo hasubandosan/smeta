@@ -3,7 +3,7 @@
 const {JSDOM}=require('jsdom'),fs=require('fs'),R=require('path').join(__dirname,'..')+'/';
 let html=fs.readFileSync(R+'new.html','utf8').replace(/<script src="[^"]+"><\/script>/g,'');
 const w=new JSDOM(html,{runScripts:'outside-only',url:'http://localhost/'}).window;w.alert=m=>{throw new Error(m)};
-for(const f of ['core','geometry','model','seeds','rules','ver','estimate','routes','exec','fact','storage','ui'])w.eval(fs.readFileSync(R+'js/'+f+'.js','utf8'));
+for(const f of ['core','geometry','model','seeds','rules','ver','estimate','routes','exec','fact','storage','legacy','ui'])w.eval(fs.readFileSync(R+'js/'+f+'.js','utf8'));
 const $=s=>w.document.querySelector(s),C=s=>$(s).click(),chg=(s,v)=>{const e=$(s);e.value=v;e.dispatchEvent(new w.Event('change',{bubbles:true}))};
 const tab=t=>C(`[data-a=tab][data-p=${t}]`);let ok=1;const A=(c,m)=>{console.log((c?'OK   ':'FAIL ')+m);if(!c)ok=0};
 A($('#main').textContent.includes('15,75'),'объект: пол 15,75');
@@ -32,4 +32,8 @@ tab('estimate');A(/v1/.test($('#main').textContent),'смета: у пункта
 tab('techs');A($('#main').textContent.includes('Версии:'),'технологии: строка версий');
 chg('[data-p=\"techs.0.ops.0.price\"]','1100');tab('estimate');A($('#main').textContent.includes('технология изменена')&&!!$('[data-a=ver-update]'),'правка технологии: у запланированной работы предложено обновить');
 const v0=+($('[data-a=ver-update]').closest('div').textContent.match(/v(\d+)/)||[0,0])[1];C('[data-a=ver-update]');const v1=Math.max(...[...$('#main').textContent.matchAll(/ v(\d+)/g)].map(m=>+m[1]));A(!$('[data-a=ver-update]')&&v1>v0,'обновление до текущей версии: предложение исчезло, версия выросла');
+const oldFx={materials:[],composites:[],tools:[],params:[{id:'f',key:'floor',label:'',unit:'',def:0}],stages:[{id:'g1',parentId:'',name:'Грунтовка',mode:'steps',unit:'м2',price:50,vol:'floor',components:[],tools:[],notes:[]}],objects:[{id:'ob9',name:'Дача',values:{},rooms:[{id:'ra',name:'Гостиная-дача',l:4,w:3,h:2.5,open:0}],fin:{},sel:{g1:{}},pick:{},extra:[]}]};
+w.localStorage.setItem('stroysmeta:v3',JSON.stringify(oldFx));tab('data');C('[data-a=lg-load]');A($('#main').textContent.includes('Дача')&&!!$('[data-a=lg-import]'),'перенос: объекты старого приложения прочитаны и показаны');
+C('[data-a=lg-import]');const mdl=JSON.parse(w.localStorage.getItem('stroysmeta:model'));A(mdl.object.geometry.rooms.some(r=>r.name==='Гостиная-дача')&&mdl.plan.some(p=>p.legacyObjectId==='ob9'&&p.techVer),'перенос: помещение и пункт плана появились в проекте');
+A($('#main').textContent.includes('Перенесено:'),'перенос: показан отчёт');
 process.exit(ok?0:1)

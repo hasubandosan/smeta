@@ -18,10 +18,10 @@
     const R = SM.est.compute(S); let factWork = 0, planWork = 0, missing = 0, known = 0;
     const items = S.plan.filter(started).map(item => { const tech = (SM.ver ? SM.ver.resolve(S, item) : S.techs.find(t => t.id === item.techId)); if (!tech) return null;
       const f = item.fact || {ops: {}, mats: {}}, done = item.status === 'COMPLETED' || item.status === 'ACCEPTED';
-      const ops = tech.ops.map(op => { const row = R.rows.find(r => r.item === item && r.op === op), pq = row ? row.q : null, pw = row ? row.work : null, fo = (f.ops || {})[op.id] || {}, fq = unk(fo.qty) ? null : fo.qty, fc = unk(fo.cost) ? null : fo.cost;
+      const ops = tech.ops.filter(op => !(item.skipOps || {})[op.id]).map(op => { const row = R.rows.find(r => r.item === item && r.op === op), pq = row ? row.q : null, pw = row ? row.work : null, fo = (f.ops || {})[op.id] || {}, fq = unk(fo.qty) ? null : fo.qty, fc = unk(fo.cost) ? null : fo.cost;
         if (pw !== null) planWork += pw; if (fc !== null) { factWork += fc; known++; } else if (done) missing++;
         return {op, planQty: pq, planWork: pw, factQty: fq, factCost: fc, dQty: pq !== null && fq !== null ? fq - pq : null, dCost: pw !== null && fc !== null ? fc - pw : null}; });
-      const mats = []; for (const op of tech.ops) for (const m of op.mats || []) if (!mats.some(x => x.matId === m.matId)) {
+      const mats = []; for (const op of tech.ops.filter(o => !(item.skipOps || {})[o.id])) for (const m of op.mats || []) if (!mats.some(x => x.matId === m.matId)) {
         const need = R.rows.filter(r => r.item === item).flatMap(r => r.mats).filter(x => x.matId === m.matId); const ns = need.length && need.every(x => x.need !== null) ? need.reduce((a, x) => a + x.need, 0) : null;
         const u = (f.mats || {})[m.matId]; mats.push({matId: m.matId, mat: S.materials.find(x => x.id === m.matId), planNeed: ns, used: unk(u) ? null : u}); }
       return {item, tech, status: item.status, ops, mats}; }).filter(Boolean);
