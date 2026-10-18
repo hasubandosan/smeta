@@ -1,7 +1,7 @@
 // Дымовой тест без браузера: npm i jsdom && node tests/smoke.js
 const {JSDOM} = require('jsdom'), fs = require('fs'), path = require('path');
 const root = path.join(__dirname, '..');
-const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8').replace(/<script src="https[^>]*><\/script>/, '').replace('<script src="app.js"></script>', '');
+const html = fs.readFileSync(path.join(root, 'old.html'), 'utf8').replace(/<script src="https[^>]*><\/script>/, '').replace('<script src="app.js"></script>', '');
 const w = new JSDOM(html, {runScripts:'outside-only', url:'http://localhost/'}).window;
 w.alert = m => { throw new Error('alert: ' + m); }; w.confirm = () => true; w.prompt = () => 'Тест';
 w.eval(fs.readFileSync(path.join(root, 'app.js'), 'utf8') + ';window.X={get S(){return S},ui,evalExpr,objVars,totals,buyList,objRows,parseNote,migrate,seed};');

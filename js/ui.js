@@ -1,4 +1,4 @@
-/* Интерфейс новой модели (new.html). Только показ и вызов SM.*; расчёты — в js/estimate.js и js/geometry.js */
+/* Интерфейс новой модели (index.html). Только показ и вызов SM.*; расчёты — в js/estimate.js и js/geometry.js */
 (function () {
   'use strict';
   const $ = id => document.getElementById(id), uid = SM.uid;
@@ -180,7 +180,7 @@
   let LG = null;   // прочитанные данные старого приложения {data, objs, src, report}
   function lgBlock() {
     const r = LG && LG.report, list = LG ? LG.objs.map(o => `<div>• <b>${esc(o.name)}</b> — помещений ${o.rooms}, выбрано этапов ${o.stages}, доп. позиций ${o.extras} ${btn('lg-import', o.id, 'Перенести в проект')}</div>`).join('') || '<div class=hint>В старых данных нет объектов.</div>' : '';
-    return `<div class=card><h3>Перенос объектов из старого приложения</h3><p class=hint>Помещения становятся геометрией, выбранные этапы — планом работ по помещениям. Ничего не удаляется, перед переносом делается точка отката; повторный перенос того же объекта ничего не дублирует. Технологии и материалы переносятся кнопкой на вкладке «Технологии» или автоматически вместе с объектом.</p>
+    return `<div class=card><h3>Перенос объектов из старого приложения</h3><p class=hint>Старое приложение осталось доступным: <a href="old.html" style="color:var(--ac)">old.html</a> (данные те же, в этом браузере). Помещения становятся геометрией, выбранные этапы — планом работ по помещениям. Ничего не удаляется, перед переносом делается точка отката; повторный перенос того же объекта ничего не дублирует. Технологии и материалы переносятся кнопкой на вкладке «Технологии» или автоматически вместе с объектом.</p>
       <button data-a=lg-load>Прочитать из этого браузера</button> <label>или файл копии старого приложения: <input type=file accept=".json,application/json" data-a=lg-file></label>
       ${LG ? `<p class=hint>Источник: ${esc(LG.src)}</p>${list}` : ''}
       ${r ? `<div class=card><b>Перенесено:</b> помещений ${r.rooms}, пунктов плана ${r.items}, технологий ${r.techs}, материалов ${r.materials}.${r.skipped.length ? '<div class=warn>Не перенесено:</div>' + r.skipped.map(x => `<div>• ${esc(x.name)} — ${esc(x.reason)}</div>`).join('') : ''}${r.notes.length ? '<div class=hint>Замечания:</div>' + r.notes.map(x => `<div class=hint>• ${esc(x)}</div>`).join('') : ''}</div>` : ''}</div>`;
@@ -227,7 +227,7 @@
     'ver-update'(id) { try { SM.ver.update(S, S.plan.find(x => x.id === id)); } catch (e) { alert(e.message); } },
     'ver-release'(id) { try { SM.ver.release(S, id); } catch (e) { alert(e.message); } },
     'lg-load'() { let raw = null; try { raw = localStorage.getItem('stroysmeta:v3'); } catch (e) {}
-      if (!raw) return alert('Старые данные в этом браузере не найдены. Откройте new.html с того же адреса, что и старое приложение, или загрузите файл копии.'); lgSet(JSON.parse(raw), 'этот браузер'); },
+      if (!raw) return alert('Старые данные в этом браузере не найдены. Откройте приложение с того же адреса, где вы работали в старом (old.html), или загрузите файл копии.'); lgSet(JSON.parse(raw), 'этот браузер'); },
     'lg-import'(id) { const o = LG.data.objects.find(x => x.id === id); if (!o || !confirm('Перенести объект «' + o.name + '» в текущий проект? Текущие данные сохранятся в точку отката.')) return;
       try { SM.store.snap(localStorage, S, true); const C = JSON.parse(JSON.stringify(S)); LG.report = SM.legacy.importObject(LG.data, o, C); S = C; } catch (e) { alert('Перенос не выполнен, данные не тронуты: ' + e.message); } },
     'kb-sel'(id) { kbSelId = id; kbEdit = false; },
@@ -283,7 +283,7 @@
     catch (e) { cloudMsg = '☁ ошибка: ' + e.message; }
     render(); }
   function lgSet(d, src) { if (!d || !Array.isArray(d.stages) || !Array.isArray(d.objects)) return alert('Это не копия старого приложения «Смета»');
-    if (d.objects.some(o => o.items || o.params)) return alert('Файл старого формата: откройте старое приложение (index.html) один раз — оно обновит данные, потом прочитайте из браузера.');
+    if (d.objects.some(o => o.items || o.params)) return alert('Файл старого формата: откройте старое приложение (old.html) один раз — оно обновит данные, потом прочитайте из браузера.');
     LG = {data: d, objs: SM.legacy.objects(d), src}; }
   document.addEventListener('change', async e => { const t = e.target; if (t.dataset.a !== 'kb-file' || !t.files[0]) return;
     try { const d = SM.kb.parse(await t.files[0].text());

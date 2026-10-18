@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Помощник строителя</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top"><div class="brand">▦ Помощник строителя</div><nav id="nav"></nav><a href="index.html" style="margin-left:auto;color:var(--acc);white-space:nowrap">Новое приложение →</a><span id="sync" class="sync"></span></header>
+<main id="main"></main>
+<input type="file" id="fileImport" accept=".json,application/json" hidden>
+<input type="file" id="fileMd" accept=".md,text/markdown" multiple hidden>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="js/core.js"></script>
+<script src="js/geometry.js"></script>
+<script src="js/model.js"></script>
+<script src="js/seeds.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
