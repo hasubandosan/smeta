@@ -22,8 +22,30 @@
   const area = pts => Math.abs(pts.reduce((s, p, i) => { const q = pts[(i + 1) % pts.length]; return s + p.x * q.y - q.x * p.y; }, 0)) / 2;
 
   // deriveRoom -> {closed, floor, ceiling, perimeter, wallArea, openingsArea, walls:[{id,len,height,gross,openings,net}], issues[]}; неизвестное = null
+  // Пересечение отрезков (без касания в общих вершинах): для проверки самопересечения контура
+  const cross = (a, b, c) => (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+  const segX = (p1, p2, p3, p4) => { const d1 = cross(p3, p4, p1), d2 = cross(p3, p4, p2), d3 = cross(p1, p2, p3), d4 = cross(p1, p2, p4), e = 1e-9;
+    return ((d1 > e && d2 < -e) || (d1 < -e && d2 > e)) && ((d3 > e && d4 < -e) || (d3 < -e && d4 > e)); };
+  const selfX = pts => { const n = pts.length; for (let i = 0; i < n; i++) for (let j = i + 2; j < n; j++) { if (i === 0 && j === n - 1) continue; if (segX(pts[i], pts[(i + 1) % n], pts[j], pts[(j + 1) % n])) return true; } return false; };
+
+  // validate(model) -> {ok, issues:[{level:'error'|'warn'|'info', code, text, id}]}. ok = нет ошибок. Единый валидатор геометрии для UI, импорта и CAD-модуля (docs/CAD_CONTRACT.md).
+  // Неизвестное (null) — не ошибка. Ошибка = данные нельзя использовать (битые ссылки, повтор id, длина ≤ 0, замкнутый контур не сходится).
+  function validate(model) { const out = [], add = (level, code, text, id) => out.push({level, code, text, id: id || null});
+    model = model || {}; const W = model.walls || [], O = model.openings || [], Rm = model.rooms || [];
+    for (const [list, what] of [[W, 'стены'], [O, 'проёма'], [Rm, 'помещения']]) { const seen = new Set(); for (const x of list) { if (!x || !x.id) add('error', 'no_id', 'У ' + what + ' нет id'); else if (seen.has(x.id)) add('error', 'dup_id', 'Повторяется id ' + what + ': ' + x.id, x.id); else seen.add(x.id); } }
+    const wall = new Map(W.map(w => [w.id, w])), roomIds = new Set(Rm.map(r => r.id));
+    for (const w of W) { if (!unk(w.len) && !(+w.len > 0)) add('error', 'bad_len', 'Длина стены «' + (w.name || w.id) + '» должна быть больше 0', w.id); if (!unk(w.turn) && !isFinite(+w.turn)) add('error', 'bad_turn', 'Поворот стены «' + (w.name || w.id) + '» не число', w.id); }
+    for (const o of O) { if (o.wallId && !wall.has(o.wallId)) add('error', 'opening_wall', 'Проём «' + (o.kind || o.id) + '» ссылается на несуществующую стену', o.id);
+      if (o.roomId && !roomIds.has(o.roomId)) add('error', 'opening_room', 'Проём «' + (o.kind || o.id) + '» ссылается на несуществующее помещение', o.id);
+      if (!o.wallId) add('info', 'opening_loose', 'Проём «' + (o.kind || o.id) + '» не привязан к стене', o.id);
+      const w = wall.get(o.wallId); if (w && !unk(w.len) && !unk(o.at) && !unk(o.w) && +o.at + +o.w > +w.len + 1e-9) add('warn', 'opening_out', 'Проём «' + (o.kind || o.id) + '» выходит за край стены', o.id); }
+    for (const r of Rm) { const p = polygon(model, r), name = r.name || r.id;
+      if (!p.ok) { const unknownLen = r.wallIds.some(id => wall.has(id) && unk(wall.get(id).len)); add(unknownLen ? 'warn' : 'error', unknownLen ? 'unknown_len' : 'not_closed', 'Помещение «' + name + '»: ' + p.issue, r.id); continue; }
+      if (selfX(p.pts)) add('warn', 'self_intersect', 'Контур помещения «' + name + '» пересекает сам себя', r.id); }
+    return {ok: !out.some(x => x.level === 'error'), issues: out}; }
+
   SM.geo = {
-    polygon,
+    polygon, validate,
     deriveRoom(model, room) {
       const issues = [], poly = polygon(model, room);
       const R = {closed: poly.ok, floor: null, ceiling: null, perimeter: null, wallArea: null, openingsArea: null, walls: [], issues};

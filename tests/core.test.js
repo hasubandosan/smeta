@@ -80,7 +80,7 @@ const bath = () => { const o = SM.seeds.bathroom(); return {o, lib: SM.seeds.lib
 const st = (P, id) => P.items.find(x => x.id === id);
 t('ванная: что можно / что заблокировано / что уточнить', () => { const {o, lib, rid} = bath(), P = SM.rules.plan(o, lib, rid);
   assert.strictEqual(st(P, 'demolish_floor').status, 'READY'); assert.strictEqual(st(P, 'waterproof_floor').status, 'BLOCKED');
-  assert.ok(st(P, 'waterproof_floor').reasons[0].includes('Демонтаж старого пола'));
+  assert.ok(st(P, 'screed_new').reasons[0].includes('Демонтаж старого пола')); assert.ok(st(P, 'waterproof_floor').reasons.join().includes('Новая стяжка')); assert.strictEqual(st(P, 'waterproof_slab').status, 'BLOCKED'); /* после демонтажа */ assert.ok(!lib.processes.some(p => (p.after || []).includes('waterproof_slab'))); /* D34: защитная гидроизоляция плиты никого не блокирует */
   assert.strictEqual(st(P, 'tile_wall').status, 'BLOCKED'); assert.strictEqual(st(P, 'demolish_wall_tile').status, 'NEEDS_INFO');
   assert.strictEqual(st(P, 'paint_box').status, 'NEEDS_INFO'); assert.strictEqual(st(P, 'gkl_ceiling').status, 'READY'); });
 t('правило объясняет «почему»: гидроизоляция из-за влажной зоны и выбора', () => { const {o, lib, rid} = bath(), w = st(SM.rules.plan(o, lib, rid), 'waterproof_floor');
@@ -94,7 +94,16 @@ t('эффекты: выполнение демонтажа меняет сост
   assert.throws(() => SM.rules.complete(o, lib, rid, 'waterproof_floor'));
   SM.rules.complete(o, lib, rid, 'demolish_floor'); const f = o.surfaces.find(s => s.kind === 'floor').id;
   assert.strictEqual(SM.model.getState(o, f, 'existing_floor'), 'NO'); const P = SM.rules.plan(o, lib, rid);
-  assert.strictEqual(st(P, 'demolish_floor').status, 'DONE'); assert.strictEqual(st(P, 'waterproof_floor').status, 'READY'); assert.strictEqual(st(P, 'heating_water').status, 'BLOCKED'); });
+  assert.strictEqual(st(P, 'demolish_floor').status, 'DONE'); assert.strictEqual(st(P, 'heating_water').status, 'READY'); assert.strictEqual(st(P, 'screed_new').status, 'BLOCKED'); assert.strictEqual(st(P, 'waterproof_floor').status, 'BLOCKED'); assert.strictEqual(st(P, 'tile_floor_lay').status, 'BLOCKED'); });
+t('порядок пола (D34): тёплый пол → стяжка → гидроизоляция по стяжке → плитка', () => { const {o, lib, rid} = bath(); for (const id of ['demolish_floor', 'heating_water', 'screed_new']) { assert.strictEqual(st(SM.rules.plan(o, lib, rid), 'waterproof_floor').status, 'BLOCKED'); SM.rules.complete(o, lib, rid, id); }
+  let P = SM.rules.plan(o, lib, rid); assert.strictEqual(st(P, 'waterproof_floor').status, 'READY'); assert.strictEqual(st(P, 'tile_floor_lay').status, 'BLOCKED'); SM.rules.complete(o, lib, rid, 'waterproof_floor'); P = SM.rules.plan(o, lib, rid); assert.strictEqual(st(P, 'tile_floor_lay').status, 'READY'); });
+t('обновление библиотеки v2→v3: порядок пола меняется точечно; правки руками не трогаются и записываются', () => { const old = SM.seeds.library(); old.version = 2; const P = id => old.processes.find(p => p.id === id);
+  P('waterproof_floor').after = ['demolish_floor']; P('heating_water').after = ['waterproof_floor']; P('screed_new').after = ['waterproof_floor', 'heating_water']; P('tile_floor_lay').after = ['screed_new']; P('waterproof_floor').name = 'Гидроизоляция пола';
+  old.processes = old.processes.filter(p => p.id !== 'waterproof_slab'); old.layers.floor = old.layers.floor.filter(l => l[0] !== 'slab_waterproofing'); old.processes.find(p => p.id === 'demolish_floor').effects = ['existing_floor', 'screed', 'waterproofing', 'heating', 'tile'].map(l => ({op: 'REMOVE', layer: l}));
+  P('tile_floor_lay').after = ['screed_new', 'MY_STEP']; /* правка руками */ const L = SM.seeds.upgradeLibrary(old), Q = id => L.processes.find(p => p.id === id);
+  assert.deepStrictEqual(Q('screed_new').after, ['demolish_floor', 'heating_water']); assert.deepStrictEqual(Q('waterproof_floor').after, ['screed_new']); assert.deepStrictEqual(Q('heating_water').after, ['demolish_floor']);
+  assert.deepStrictEqual(Q('tile_floor_lay').after, ['screed_new', 'MY_STEP']); assert.deepStrictEqual(L.upgradeSkipped, ['tile_floor_lay.after']); assert.ok(Q('waterproof_slab')); assert.ok(L.layers.floor.some(l => l[0] === 'slab_waterproofing')); assert.ok(Q('demolish_floor').effects.some(e => e.layer === 'slab_waterproofing'));
+  assert.strictEqual(L.version, 3); assert.strictEqual(SM.seeds.upgradeLibrary(L), L); });
 t('плитка на стенах разблокируется по цепочке, когда основание подготовлено', () => { const {o, lib, rid} = bath();
   o.surfaces.filter(s => s.kind === 'wall').forEach(s => SM.model.setState(o, s.id, 'existing_tile', 'NO'));
   assert.strictEqual(st(SM.rules.plan(o, lib, rid), 'prepare_wall_base').status, 'READY');
@@ -117,16 +126,17 @@ require('../js/routes.js');
 const rt = () => { const {o, lib, rid} = bath(), T = (id, pid, price) => ({id, name: id, processId: pid, params: [], ops: [{id: 'o' + id, name: 'Р', unit: 'м2', price, qty: 'floor', mats: []}]});
   const S = {object: o, library: lib, materials: [], fin: {}, bought: {}, techs: [T('dem', 'demolish_floor', 100), T('new', 'screed_new', 500), T('rep', 'repair_screed', 150), T('tile', 'tile_floor_lay', 1000)],
     plan: [{id: 'p', techId: 'tile', roomId: rid, processId: 'tile_floor_lay', values: {}}],
-    routes: [{id: 'A', name: 'Оставить', roomId: rid, steps: [], assume: [{kind: 'floor', layer: 'existing_floor', value: 'NO'}, {kind: 'floor', layer: 'screed', value: 'YES'}]},
+    routes: [{id: 'A', name: 'Оставить', roomId: rid, steps: [], assume: [{kind: 'floor', layer: 'existing_floor', value: 'NO'}, {kind: 'floor', layer: 'screed', value: 'YES'}, {kind: 'floor', layer: 'waterproofing', value: 'YES'}]},
       {id: 'B', name: 'Ремонт', roomId: rid, steps: [{processId: 'repair_screed', techId: 'rep'}], assume: [{kind: 'floor', layer: 'existing_floor', value: 'NO'}]},
       {id: 'C', name: 'Снести и новая', roomId: rid, steps: [{processId: 'demolish_floor', techId: 'dem'}, {processId: 'screed_new', techId: 'new'}], assume: []}]}; return {S, rid}; };
 t('маршруты: полная цена = шаги + нужное дальше; выбирается дешёвый', () => { const {S, rid} = rt(), C = SM.routes.compareAll(S, rid), by = id => C.results.find(x => x.route.id === id);
   near(by('A').work, 15750); near(by('B').work, 15750 + 150 * 15.75); near(by('C').work, 15750 + 600 * 15.75); assert.strictEqual(C.best, 'A'); });
 t('маршруты: реальный объект не меняется; последствия видны', () => { const {S, rid} = rt(), f = S.object.surfaces.find(s => s.kind === 'floor').id, C = SM.routes.compareAll(S, rid);
-  assert.strictEqual(SM.model.getState(S.object, f, 'existing_floor'), 'YES'); assert.ok(C.results.find(x => x.route.id === 'A').ready.includes('Плитка на полу')); });
+  assert.strictEqual(SM.model.getState(S.object, f, 'existing_floor'), 'YES'); assert.ok(C.results.find(x => x.route.id === 'A').ready.includes('Плитка на полу'));
+  const B = C.results.find(x => x.route.id === 'B'); assert.ok(B.ready.includes('Гидроизоляция пола (по стяжке, под плитку)') && !B.ready.includes('Плитка на полу')); /* D34: после ремонта стяжки плитку открывает гидроизоляция */ });
 t('маршруты: неизвестные данные → итог неполный, «дешевле» не объявляется', () => { const {S, rid} = rt(); S.techs[3].ops[0].qty = 'nope'; assert.strictEqual(SM.routes.compareAll(S, rid).best, null); });
 t('обновление библиотеки только добавляет, не затирает правки пользователя', () => { const old = SM.seeds.library(); old.version = 1; old.processes = old.processes.filter(p => p.id !== 'repair_screed'); old.processes[0].name = 'МОЁ НАЗВАНИЕ';
-  const L = SM.seeds.upgradeLibrary(old); assert.ok(L.processes.some(p => p.id === 'repair_screed')); assert.strictEqual(L.processes[0].name, 'МОЁ НАЗВАНИЕ'); assert.strictEqual(L.version, 2); });
+  const L = SM.seeds.upgradeLibrary(old); assert.ok(L.processes.some(p => p.id === 'repair_screed')); assert.strictEqual(L.processes[0].name, 'МОЁ НАЗВАНИЕ'); assert.strictEqual(L.version, 3); });
 console.log('Итого проверок: ' + n);
 
 /* ---- выполнение и приёмка ---- */
@@ -134,8 +144,8 @@ require('../js/exec.js');
 const ex = () => { const {o, lib, rid} = bath(), N = (cat, text) => ({id: 'n' + text, cat, text});
   const S = {object: o, library: lib, materials: [], fin: {}, bought: {}, techs: [{id: 'dem', name: 'Демонтаж', processId: 'demolish_floor', params: [], ops: [{id: 'o', name: 'Снос', unit: 'м2', price: 100, qty: 'floor', mats: [],
       notes: [N('accept', 'Основание очищено'), N('accept', 'Мусор вывезен'), N('cond', 'Отключить воду'), N('error', 'Повредили трубы')]}]},
-    {id: 'wp', name: 'Гидроизоляция', processId: 'waterproof_floor', params: [], ops: [{id: 'o2', name: 'Обмазка', unit: 'м2', price: 50, qty: 'floor', mats: [], notes: []}]}],
-    plan: [{id: 'a', techId: 'dem', roomId: rid, processId: 'demolish_floor'}, {id: 'b', techId: 'wp', roomId: rid, processId: 'waterproof_floor'}]}; return {S, o, rid}; };
+    {id: 'wp', name: 'Тёплый пол', processId: 'heating_water', params: [], ops: [{id: 'o2', name: 'Монтаж', unit: 'м2', price: 50, qty: 'floor', mats: [], notes: []}]}],
+    plan: [{id: 'a', techId: 'dem', roomId: rid, processId: 'demolish_floor'}, {id: 'b', techId: 'wp', roomId: rid, processId: 'heating_water'}]}; return {S, o, rid}; };
 t('работы: нельзя начать, пока процесс заблокирован; причина названа', () => { const {S} = ex(), b = S.plan[1], v = SM.exec.view(S, b);
   assert.ok(!v.canStart && v.waits[0].includes('Демонтаж')); assert.throws(() => SM.exec.start(S, b), /Сначала/); });
 t('работы: начать → выполнить меняет состояние и открывает следующую работу', () => { const {S, o} = ex(), [a, b] = S.plan;
