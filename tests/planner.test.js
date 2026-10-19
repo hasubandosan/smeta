@@ -59,4 +59,6 @@ t('undo/redo: без лимита глубины, повтор сбрасыва�
 t('несколько помещений и сироты: стена без комнаты и комната без стен не ломают загрузку', () => {
   const g = rect(4, 3); g.walls.push({id: 'x', len: 2}); g.rooms.push({id: 'e', name: 'пусто', wallIds: []}); const d = P.fromGeometry(g);
   assert.strictEqual(d.walls[4].roomId, null); assert.strictEqual(d.walls[4].a, null); assert.strictEqual(d.rooms[1].vertices, null); assert.deepStrictEqual(P.toGeometry(d, g), g); });
+t('describe: подписи по-русски, неизвестное — «не задано», не 0', () => { const g = bath(), d = P.describe(g, g.walls[5].id); assert.strictEqual(d.kind, 'wall'); assert.ok(d.rows.some(r => r[0] === 'Поворот в конце' && /по умолчанию/.test(r[1])) && d.rows.some(r => r[0] === 'Толщина' && r[1] === 'не задано'));
+  const r = P.describe(g, g.rooms[0].id); assert.ok(r.rows.some(x => x[0] === 'Площадь пола' && x[1] === '15,75 м²')); assert.strictEqual(P.describe(g, 'нет'), null); });
 console.log('Итого проверок: ' + n);

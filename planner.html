@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>2D-планировщик — стенд</title>
+<style>
+:root{--bg:#fff;--fg:#1f2630;--mut:#5a6472;--line:#d5dae1;--card:#f6f8fb;--pl-bg:#fff}
+@media (prefers-color-scheme:dark){:root{--bg:#14181e;--fg:#e6e9ee;--mut:#9aa4b2;--line:#2c333d;--card:#1b2027;--pl-bg:#14181e;--pl-grid:#262d36;--pl-axis:#3a4452;--pl-room:#1f2a3a;--pl-roomsel:#3a2323;--pl-wall:#c9d1db;--pl-text:#e6e9ee;--pl-dim:#9aa4b2;--pl-fix:#14181e;--pl-fixl:#9aa4b2}}
+*{box-sizing:border-box}html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--fg);font:15px/1.4 system-ui,sans-serif;display:flex;flex-direction:column}
+header{padding:8px 12px;border-bottom:1px solid var(--line);display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+header h1{font-size:16px;margin:0}header select,header button{font:inherit;padding:4px 8px}
+main{flex:1;display:flex;min-height:0}
+#plan{flex:1;min-width:0;background:var(--pl-bg)}
+aside{width:300px;border-left:1px solid var(--line);padding:10px;overflow:auto;background:var(--card)}
+aside h2{font-size:14px;margin:12px 0 4px}aside h2:first-child{margin-top:0}
+aside ul{margin:0;padding-left:18px}aside li{margin:2px 0}
+aside button.lnk{background:none;border:0;padding:0;color:inherit;font:inherit;text-decoration:underline;cursor:pointer}
+table{border-collapse:collapse;width:100%}td{padding:2px 4px;vertical-align:top;border-bottom:1px solid var(--line)}td:first-child{color:var(--mut)}
+.lvl-error{color:#d33}.lvl-warn{color:#c77700}.lvl-info{color:var(--mut)}.mut{color:var(--mut)}
+@media (max-width:700px){main{flex-direction:column}aside{width:100%;max-height:40%;border-left:0;border-top:1px solid var(--line)}}
+</style>
+</head>
+<body>
+<header><h1>2D-планировщик (стенд, только просмотр)</h1>
+<label>Данные: <select id="data"><option value="bath">Эталонная ванная</option><option value="demo">Вымышленный пример (3 помещения)</option><option value="empty">Пусто</option></select></label>
+<span class="mut" id="ver"></span></header>
+<main><div id="plan"></div>
+<aside><h2>Выбрано</h2><div id="info" class="mut">Нажмите на помещение, стену, проём или предмет.</div>
+<h2>Помещения</h2><ul id="rooms"></ul>
+<h2>Проёмы без привязки к стене</h2><ul id="loose"></ul>
+<h2>Замечания</h2><ul id="issues"></ul></aside></main>
+<script src="js/core.js"></script><script src="js/geometry.js"></script><script src="js/model.js"></script><script src="js/seeds.js"></script><script src="js/planner.js"></script><script src="js/planner-ui.js"></script>
+<script>
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  // Вымышленные данные только для проверки отрисовки (не нормы и не реальный объект)
+  function demo() {
+    var W = function (id, len, turn, extra) { return Object.assign({id: id, len: len, turn: turn}, extra || {}); };
+    return {
+      walls: [W('a1', 4, 90, {name: 'A1', thickness: 0.2}), W('a2', 3, 90, {name: 'A2', thickness: 0.2}), W('a3', 4, 90, {name: 'A3', thickness: 0.2}), W('a4', 3, null, {name: 'A4', thickness: 0.2}),
+        W('b1', 3, 90, {name: 'B1', thickness: 0.2}), W('b2', 3, 90, {name: 'B2'}), W('b3', 3, 90, {name: 'B3'}), W('b4', 3, null, {name: 'B4'}),
+        W('c1', 4, 90, {name: 'C1'}), W('c2', 1.5, 90), W('c3', 2.5, -90), W('c4', 1.5, 90), W('c5', 1.5, 90), W('c6', 3, null)],
+      rooms: [{id: 'rA', name: 'Комната A', height: 2.5, wallIds: ['a1', 'a2', 'a3', 'a4']}, {id: 'rB', name: 'Комната B', height: 2.5, wallIds: ['b1', 'b2', 'b3', 'b4'], pos: {x: 4.2, y: 0, rot: 0}},
+        {id: 'rC', name: 'Г-образная', height: 2.5, wallIds: ['c1', 'c2', 'c3', 'c4', 'c5', 'c6'], pos: {x: 0, y: 4, rot: 0}}],
+      openings: [{id: 'o1', wallId: 'a1', roomId: 'rA', kind: 'дверь', w: 0.9, h: 2.1, at: 0.5, swing: 'in'}, {id: 'o2', wallId: 'a3', roomId: 'rA', kind: 'окно', w: 1.2, h: 1.4, at: 1.4, sill: 0.9},
+        {id: 'o3', wallId: null, roomId: 'rB', kind: 'дверь', w: 0.8, h: 2.0}],
+      fixtures: [{id: 'f1', roomId: 'rA', kind: 'предмет', name: 'Бокс', x: 2, y: 1.5, rot: 30, w: 0.6, d: 0.4}, {id: 'f2', roomId: 'rB', kind: 'предмет', name: 'Размер не задан', x: 1.5, y: 1.5, rot: 0, w: null, d: null}]
+    };
+  }
+  var sets = {bath: function () { return SM.seeds.bathroom().geometry; }, demo: demo, empty: function () { return {walls: [], openings: [], rooms: []}; }};
+  var geometry = sets.bath(), h;
+  function li(ul, text, cls, fn) { var e = document.createElement('li'); if (cls) e.className = cls; if (fn) { var b = document.createElement('button'); b.className = 'lnk'; b.textContent = text; b.onclick = fn; e.appendChild(b); } else e.textContent = text; ul.appendChild(e); }
+  function showInfo(ids) {
+    var box = $('info'); box.textContent = '';
+    if (!ids.length) { box.className = 'mut'; box.textContent = 'Нажмите на помещение, стену, проём или предмет.'; return; }
+    box.className = ''; var d = SM.planner.describe(geometry, ids[0]); if (!d) return;
+    var t = document.createElement('div'); t.textContent = d.title; t.style.fontWeight = '600'; box.appendChild(t);
+    var tb = document.createElement('table'); d.rows.forEach(function (r) { var tr = tb.insertRow(); tr.insertCell().textContent = r[0]; tr.insertCell().textContent = r[1]; }); box.appendChild(tb);
+    if (ids.length > 1) { var m = document.createElement('div'); m.className = 'mut'; m.textContent = 'и ещё выбрано: ' + (ids.length - 1); box.appendChild(m); }
+  }
+  function lists(issues) {
+    var u = $('issues'); u.textContent = ''; if (!issues.length) li(u, 'нет', 'mut'); issues.forEach(function (x) { li(u, x.text, 'lvl-' + x.level); });
+    var r = $('rooms'); r.textContent = ''; if (!geometry.rooms.length) li(r, 'нет', 'mut');
+    geometry.rooms.forEach(function (room) { var m = SM.planner.measure(geometry).filter(function (x) { return x.id === room.id; })[0]; li(r, (room.name || room.id) + (m && m.floor !== null ? ' — ' + (Math.round(m.floor * 100) / 100).toString().replace('.', ',') + ' м²' : ''), '', function () { h.focus(room.id); h.select(room.id); showInfo([room.id]); }); });
+    var l = $('loose'); l.textContent = ''; var loose = (geometry.openings || []).filter(function (o) { return !o.wallId; }); if (!loose.length) li(l, 'нет', 'mut');
+    loose.forEach(function (o) { li(l, (o.kind || 'проём') + (o.w != null && o.h != null ? ' ' + o.w + '×' + o.h : ''), '', function () { h.select(o.id); showInfo([o.id]); }); });
+  }
+  function start() {
+    $('plan').textContent = ''; $('ver').textContent = 'модуль v' + SM.planner.VERSION + ', контракт ' + SM.planner.CONTRACT; showInfo([]);
+    h = SM.planner.mount($('plan'), {geometry: geometry, readOnly: true, onSelect: showInfo, onIssues: lists});
+  }
+  $('data').onchange = function () { geometry = sets[this.value](); start(); };
+  start();
+})();
+</script>
+</body>
+</html>

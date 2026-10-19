@@ -112,6 +112,21 @@
     return ((geometry && geometry.rooms) || []).map(r => { const x = SM.geo.deriveRoom(geometry, r); return {id: r.id, closed: x.closed, floor: x.floor, perimeter: x.perimeter}; });
   }
 
+
+  // Описание записи для панели свойств: {kind, title, rows:[[подпись, значение]]}. Неизвестное = «не задано» (не 0)
+  function describe(geometry, id) {
+    const g = geometry || {}, f = (list) => (list || []).find(x => x && x.id === id), none = 'не задано';
+    const num = (v, u) => unk(v) ? none : String(Math.round(+v * 1000) / 1000).replace('.', ',') + (u ? ' ' + u : '');
+    const txt = v => unk(v) ? none : String(v), wallName = wid => { const w = f2(g.walls, wid); return w ? (w.name || w.id) : none; };
+    function f2(list, x) { return (list || []).find(y => y && y.id === x); }
+    let x;
+    if ((x = f(g.rooms))) { const m = measure(g).find(r => r.id === id) || {}; return {kind: 'room', title: 'Помещение «' + (x.name || x.id) + '»', rows: [['Тип', txt(x.type)], ['Высота', num(x.height, 'м')], ['Стен', String((x.wallIds || []).length)], ['Площадь пола', num(m.floor, 'м²')], ['Периметр', num(m.perimeter, 'м')], ['Контур замкнут', m.closed ? 'да' : 'нет']]}; }
+    if ((x = f(g.walls))) return {kind: 'wall', title: 'Стена «' + (x.name || x.id) + '»', rows: [['Длина', num(x.len, 'м')], ['Поворот в конце', unk(x.turn) ? '90° (по умолчанию)' : num(x.turn, '°')], ['Высота', num(x.height, 'м')], ['Материал', txt(x.material)], ['Толщина', num(x.thickness, 'м')]]};
+    if ((x = f(g.openings))) return {kind: 'opening', title: 'Проём «' + (x.kind || x.id) + '»', rows: [['Стена', x.wallId ? wallName(x.wallId) : 'не привязан к стене'], ['Ширина', num(x.w, 'м')], ['Высота', num(x.h, 'м')], ['От начала стены', num(x.at, 'м')], ['Низ от пола', num(x.sill, 'м')], ['Открывание', txt(x.swing)]]};
+    if ((x = f(g.fixtures))) return {kind: 'fixture', title: 'Предмет «' + (x.name || x.kind || x.id) + '»', rows: [['Вид', txt(x.kind)], ['Центр x, y', num(x.x, 'м') + '; ' + num(x.y, 'м')], ['Поворот', num(x.rot, '°')], ['Ширина × глубина', num(x.w, 'м') + ' × ' + num(x.d, 'м')], ['Высота', num(x.h, 'м')]]};
+    return null;
+  }
+
   // Отмена/повтор: снимки геометрии, без ограничения глубины. История в проект не попадает
   function createHistory(geometry) {
     const past = [], future = []; let cur = {g: clone(geometry), reason: 'start'};
@@ -124,7 +139,7 @@
     };
   }
 
-  SM.planner = Object.assign(SM.planner || {}, {VERSION: '0.1.0', CONTRACT: 1,
-    fromGeometry, toGeometry, moveVertex, snapPoint, toWorld, finish, measure, createHistory});
+  SM.planner = Object.assign(SM.planner || {}, {VERSION: '0.2.0', CONTRACT: 1,
+    fromGeometry, toGeometry, moveVertex, snapPoint, toWorld, finish, measure, describe, createHistory});
 })(typeof window !== 'undefined' ? window : globalThis);
 if (typeof module !== 'undefined') module.exports = (typeof window !== 'undefined' ? window : globalThis).SM;
