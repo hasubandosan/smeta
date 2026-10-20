@@ -1,0 +1,44 @@
+// Несколько помещений на плане (срез 5), ядро: node tests/planner-rooms.test.js
+const assert = require('assert'), SM = require('../js/core.js');
+for (const f of ['geometry', 'model', 'seeds', 'rules', 'ver', 'estimate', 'storage', 'planner']) require('../js/' + f + '.js');
+let n = 0; const t = (name, f) => { f(); n++; console.log('OK   ' + name); };
+const P = SM.planner, O = P.ops, J = x => JSON.stringify(x), near = (a, b, e) => assert.ok(Math.abs(a - b) < (e || 1e-6), a + ' ≠ ' + b);
+const two = () => ({walls: [{id: 'a1', len: 4, turn: 90}, {id: 'a2', len: 3, turn: 90}, {id: 'a3', len: 4, turn: 90}, {id: 'a4', len: 3, turn: null}, {id: 'b1', len: 3, turn: 90}, {id: 'b2', len: 3, turn: 90}, {id: 'b3', len: 3, turn: 90}, {id: 'b4', len: 3, turn: null}], openings: [],
+  rooms: [{id: 'rA', name: 'A', height: 2.5, wallIds: ['a1', 'a2', 'a3', 'a4']}, {id: 'rB', name: 'B', height: 2.5, wallIds: ['b1', 'b2', 'b3', 'b4'], pos: {x: 4.2, y: 0, rot: 0}}], fixtures: [{id: 'f', roomId: 'rB', kind: 'box', x: 1, y: 1, rot: 0, w: 0.5, d: 0.5}]});
+const out = (d, base) => { const g = P.toGeometry(d, base), v = SM.geo.validate(g); assert.ok(v.ok, J(v.issues)); return g; };
+const world = (g, id) => { const d = P.fromGeometry(g), r = d.rooms.find(x => x.id === id); return r.vertices.map(p => P.toWorld(r, p)); };
+const wall = (d, id) => d.walls.find(w => w.id === id), W = (d, id) => { const w = wall(d, id), r = d.rooms.find(x => x.id === w.roomId); return [P.toWorld(r, w.a), P.toWorld(r, w.b)]; };
+const centroid = ps => ({x: ps.reduce((s, p) => s + p.x, 0) / ps.length, y: ps.reduce((s, p) => s + p.y, 0) / ps.length});
+const pure = (g, f) => { const d = P.fromGeometry(g), s = J(d); const r = f(d); assert.strictEqual(J(d), s, 'вход не изменён'); return r; };
+
+t('moveRoom: меняется только room.pos; стены, проёмы, предметы в локальных координатах не тронуты', () => { const g = two(), d = pure(g, x => O.moveRoom(x, 'rB', -0.2, 0.5)), o = out(d, g);
+  assert.strictEqual(J(o.walls), J(g.walls)); assert.strictEqual(J(o.fixtures), J(g.fixtures)); near(o.rooms[1].pos.x, 4); near(o.rooms[1].pos.y, 0.5); const w = world(o, 'rB'); near(w[0].x, 4); near(w[0].y, 0.5); near(w[2].x, 7); near(w[2].y, 3.5); });
+t('moveRoom: ошибки; возврат в начало убирает pos, если он лишний', () => { const g = two(); const d = P.fromGeometry(g); assert.throws(() => O.moveRoom(d, 'rB', 'x', 0), /числом/); assert.throws(() => O.moveRoom(d, 'нет', 0, 0), /не найдено/);
+  const o = out(O.moveRoom(P.fromGeometry(g), 'rA', 1, 1), g); near(o.rooms[0].pos.x, 1); const back = out(O.moveRoom(P.fromGeometry(o), 'rA', -1, -1), o); assert.ok(!('pos' in back.rooms[0])); });
+t('P9: комната не прыгает — правка угла/стены после переноса оставляет остальное на месте и не двигает соседа', () => { const g = two(), moved = out(O.moveRoom(P.fromGeometry(g), 'rB', -0.2, 0.5), g), before = world(moved, 'rB'), a0 = J(world(moved, 'rA'));
+  const o = out(O.moveVertex(P.fromGeometry(moved), 'rB', 2, {x: 3.5, y: 3}), moved), after = world(o, 'rB'); [0, 1, 3].forEach(i => { near(after[i].x, before[i].x); near(after[i].y, before[i].y); }); near(after[2].x, 7.5); near(after[2].y, 3.5); assert.strictEqual(J(world(o, 'rA')), a0);
+  const o2 = out(O.setWallLength(P.fromGeometry(moved), 'b1', 2), moved), w2 = world(o2, 'rB'); near(w2[0].x, before[0].x); near(w2[0].y, before[0].y); });
+t('rotateRoom: поворот на месте (вокруг середины углов), площадь та же, локальные данные не тронуты; 4×90° — исходное положение', () => { const g = two(); let d = pure(g, x => O.rotateRoom(x, 'rB', 90)); const o = out(d, g), c0 = centroid(world(g, 'rB')), c1 = centroid(world(o, 'rB'));
+  near(c1.x, c0.x); near(c1.y, c0.y); near(P.measure(o).find(r => r.id === 'rB').floor, 9); assert.strictEqual(J(o.walls), J(g.walls)); const w = world(o, 'rB'); near(Math.hypot(w[1].x - w[0].x, w[1].y - w[0].y), 3);
+  let h = g; for (let i = 0; i < 4; i++) h = out(O.rotateRoom(P.fromGeometry(h), 'rB', 90), h); world(h, 'rB').forEach((p, i) => { near(p.x, world(g, 'rB')[i].x, 1e-6); near(p.y, world(g, 'rB')[i].y, 1e-6); });
+  const r2 = out(O.rotateRoom(P.fromGeometry(g), 'rA', 30, {x: 0, y: 0}), g); near(world(r2, 'rA')[1].x, 4 * Math.cos(Math.PI / 6)); assert.throws(() => O.rotateRoom(P.fromGeometry(g), 'rA', 'x'), /числом/); });
+t('snapRoomMove: угол к углу, затем стена вплотную; далеко — без привязки', () => { const d = P.fromGeometry(two());
+  let s = P.snapRoomMove(d, 'rB', -0.17, 0, {tol: 0.1}); assert.strictEqual(s.kind, 'vertex'); near(s.dx, -0.2); near(s.dy, 0);
+  s = P.snapRoomMove(d, 'rB', -0.17, 0.5, {tol: 0.1}); assert.strictEqual(s.kind, 'wall'); near(s.dx, -0.2); near(s.dy, 0.5);
+  s = P.snapRoomMove(d, 'rB', 1, 1, {tol: 0.1}); assert.strictEqual(s.kind, null); near(s.dx, 1); s = P.snapRoomMove(d, 'rB', -0.17, 0); assert.strictEqual(s.kind, 'vertex', 'допуск по умолчанию 5 см: 0,03 м'); });
+t('findSharedWalls: до сближения пусто, вплотную — пара a2↔b4; после связи не предлагается', () => { const g = two(); assert.strictEqual(P.findSharedWalls(P.fromGeometry(g)).length, 0);
+  const o = out(O.moveRoom(P.fromGeometry(g), 'rB', -0.2, 0), g), d = P.fromGeometry(o), f = P.findSharedWalls(d); assert.strictEqual(f.length, 1); assert.deepStrictEqual([f[0].a, f[0].b].sort(), ['a2', 'b4']); near(f[0].overlap, 3);
+  const l = out(O.linkWalls(d, 'a2', 'b4'), o); assert.strictEqual(P.findSharedWalls(P.fromGeometry(l)).length, 0); assert.strictEqual(P.findSharedWalls(d, {roomId: 'нет'}).length, 0); });
+t('linkWalls / unlinkWall: две записи по контракту, замечания, ошибки', () => { const g = two(); g.walls.find(w => w.id === 'b1').len = 2; g.walls.find(w => w.id === 'b3').len = 2; const d = P.fromGeometry(g);
+  const l = O.linkWalls(d, 'a1', 'b1'); assert.ok(l.notes.some(x => /различаются/.test(x)) && l.notes.some(x => /не лежат рядом/.test(x))); assert.deepStrictEqual([wall(l, 'a1').src.shared, wall(l, 'b1').src.shared], ['b1', 'a1']);
+  assert.throws(() => O.linkWalls(d, 'a1', 'a2'), /разных помещений/); assert.throws(() => O.linkWalls(d, 'a1', 'нет'), /не найдена/);
+  const l2 = O.linkWalls(l, 'a1', 'b2'); assert.ok(!('shared' in wall(l2, 'b1').src)); assert.strictEqual(wall(l2, 'b2').src.shared, 'a1'); assert.ok(l2.notes.some(x => /снята/.test(x)));
+  const u = O.unlinkWall(l, 'b1'); assert.ok(!('shared' in wall(u, 'a1').src) && !('shared' in wall(u, 'b1').src)); assert.throws(() => O.unlinkWall(u, 'a1'), /нет общей/); });
+t('alignRoomToWall: комната развёрнута и прижата стеной к стене соседа, внутренности по разные стороны, стены связаны', () => { const g = two(); g.rooms[1].pos = {x: 10, y: 10, rot: 37}; const d = pure(g, x => O.alignRoomToWall(x, 'b4', 'a2')), o = out(d, g), r = P.fromGeometry(o);
+  const [ba, bb] = W(r, 'b4'), [ta, tb] = W(r, 'a2'); near(ba.x, tb.x); near(ba.y, tb.y); near(bb.x, ta.x); near(bb.y, ta.y); assert.ok(centroid(world(o, 'rB')).x > 4, 'комната B справа от A');
+  assert.deepStrictEqual([wall(r, 'a2').src.shared, wall(r, 'b4').src.shared], ['b4', 'a2']); assert.strictEqual(P.findSharedWalls(P.fromGeometry(out(O.unlinkWall(r, 'a2'), o))).length, 1);
+  const free = out(O.alignRoomToWall(P.fromGeometry(g), 'b4', 'a2', {link: false}), g); assert.ok(!free.walls.some(w => w.shared)); assert.throws(() => O.alignRoomToWall(P.fromGeometry(g), 'b4', 'b2'), /другого помещения/); });
+t('alignRoomToWall: комната, заданная в другую сторону обхода (по часовой), тоже встаёт снаружи', () => { const g = two(); g.walls.filter(w => /^b/.test(w.id) && w.turn !== null).forEach(w => { w.turn = -90; }); g.rooms[1].pos = {x: -8, y: 5, rot: 200};
+  const o = out(O.alignRoomToWall(P.fromGeometry(g), 'b4', 'a2'), g); assert.ok(centroid(world(o, 'rB')).x > 4); near(P.measure(o).find(r => r.id === 'rB').floor, 9); const r = P.fromGeometry(o); near(W(r, 'b4')[0].x, 4); near(W(r, 'b4')[1].x, 4); });
+t('splitRoom: перегородка по-прежнему создаёт связанную пару; версия 0.5.0', () => { const g = two(), q = {x: 2, y: 0}, d = O.splitRoom(P.fromGeometry(g), 'rA', q, {x: 2, y: 3}), o = out(d, g); assert.strictEqual(o.walls.filter(w => w.shared).length, 2); assert.strictEqual(P.VERSION, '0.5.0'); });
+console.log('Всего: ' + n);

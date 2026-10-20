@@ -355,6 +355,76 @@
   const removeOpening = (d, id) => edit(d, c => { const o = openEd(c, id); c.openings = c.openings.filter(x => x !== o); });
 
 
+  // ===== Несколько помещений на плане (срез 5). Положение комнаты — только room.pos (P9): стены, проёмы и предметы в локальных координатах не трогаются
+  const meanPt = pts => ({x: pts.reduce((s, p) => s + p.x, 0) / pts.length, y: pts.reduce((s, p) => s + p.y, 0) / pts.length});
+  const worldRoom = r => r.vertices ? r.vertices.map(v => toWorld(r, v)) : null;
+  const worldEdges = d => { const out = []; for (const w of d.walls) { const r = d.rooms.find(x => x.id === w.roomId); if (r && w.a && w.b) out.push({roomId: r.id, wallId: w.id, a: toWorld(r, w.a), b: toWorld(r, w.b)}); } return out; };
+  // Как лежат два отрезка: параллельны (sin угла ≤ angTol), оба конца e2 не дальше tol от прямой e1; overlap — длина общего куска вдоль e1; off — смещение e2 от e1 (знак — сторона)
+  function touch(e1, e2, tol, angTol) {
+    const L1 = Math.hypot(e1.b.x - e1.a.x, e1.b.y - e1.a.y), L2 = Math.hypot(e2.b.x - e2.a.x, e2.b.y - e2.a.y); if (!(L1 > 0) || !(L2 > 0)) return null;
+    const ux = (e1.b.x - e1.a.x) / L1, uy = (e1.b.y - e1.a.y) / L1, vx = (e2.b.x - e2.a.x) / L2, vy = (e2.b.y - e2.a.y) / L2; if (Math.abs(ux * vy - uy * vx) > angTol) return null;
+    const off = p => ux * (p.y - e1.a.y) - uy * (p.x - e1.a.x), o1 = off(e2.a), o2 = off(e2.b); if (Math.abs(o1) > tol || Math.abs(o2) > tol) return null;
+    const t1 = (e2.a.x - e1.a.x) * ux + (e2.a.y - e1.a.y) * uy, t2 = (e2.b.x - e1.a.x) * ux + (e2.b.y - e1.a.y) * uy;
+    return {overlap: Math.min(L1, Math.max(t1, t2)) - Math.max(0, Math.min(t1, t2)), off: (o1 + o2) / 2, nx: -uy, ny: ux, L1, L2};
+  }
+  const MOVE_TOL = 0.05, ANG_TOL = 0.01;   // допуски интерфейса (P19), не нормы
+
+  // Привязка при переносе комнаты на (dx, dy): сначала угол к углу соседней комнаты, затем стена вплотную к параллельной стене. -> {dx, dy, kind: 'vertex'|'wall'|null}
+  function snapRoomMove(d, roomId, dx, dy, opts) {
+    opts = opts || {}; const tol = unk(opts.tol) ? MOVE_TOL : +opts.tol, r = d.rooms.find(x => x.id === roomId); if (!r || !r.vertices) return {dx, dy, kind: null};
+    const mine = worldRoom(r).map(p => ({x: p.x + dx, y: p.y + dy})); let best = null;
+    for (const o of d.rooms) { if (o.id === roomId || !o.vertices) continue; for (const q of worldRoom(o)) for (const p of mine) { const dist = Math.hypot(q.x - p.x, q.y - p.y); if (dist <= tol && (!best || dist < best.dist)) best = {dist, dx: dx + q.x - p.x, dy: dy + q.y - p.y}; } }
+    if (best) return {dx: best.dx, dy: best.dy, kind: 'vertex'};
+    const me = worldEdges(d).filter(e => e.roomId === roomId).map(e => ({a: {x: e.a.x + dx, y: e.a.y + dy}, b: {x: e.b.x + dx, y: e.b.y + dy}})), others = worldEdges(d).filter(e => e.roomId !== roomId);
+    for (const e of others) for (const m of me) { const t = touch(e, m, tol, ANG_TOL); if (t && t.overlap > 1e-6 && (!best || Math.abs(t.off) < best.dist)) best = {dist: Math.abs(t.off), dx: dx - t.off * t.nx, dy: dy - t.off * t.ny}; }
+    return best ? {dx: best.dx, dy: best.dy, kind: 'wall'} : {dx, dy, kind: null};
+  }
+
+  const setPos = (r, x, y, rot) => { const pos = Object.assign({}, r.src.pos, {x: round9(x), y: round9(y), rot: round9(normAngle(rot))}); if (Math.abs(pos.x) < 1e-9 && Math.abs(pos.y) < 1e-9 && Math.abs(pos.rot) < 1e-9 && Object.keys(pos).length === 3) delete r.src.pos; else r.src.pos = pos; };
+  const posOf = r => Object.assign({x: 0, y: 0, rot: 0}, r.src.pos), finiteN = (v, msg) => { if (unk(v) || v === '' || !isFinite(+v)) throw new Error(msg); return +v; };
+  const roomAny = (c, id) => { const r = c.rooms.find(x => x.id === id); if (!r) throw new Error('Помещение не найдено: ' + id); return r; };
+  // Сдвинуть комнату на (dx, dy) м по плану
+  function moveRoom(d, roomId, dx, dy) {
+    dx = finiteN(dx, 'Сдвиг должен быть числом'); dy = finiteN(dy, 'Сдвиг должен быть числом');
+    return edit(d, c => { const r = roomAny(c, roomId), p = posOf(r); setPos(r, p.x + dx, p.y + dy, p.rot); });
+  }
+  // Повернуть комнату на deg° (против часовой — плюс) вокруг точки about (мировые координаты; по умолчанию — середина углов)
+  function rotateRoom(d, roomId, deg, about) {
+    deg = finiteN(deg, 'Угол поворота должен быть числом');
+    return edit(d, c => { const r = roomEd(c, roomId), p = posOf(r), ctr = about || meanPt(worldRoom(r)), a = rad(deg), cs = Math.cos(a), sn = Math.sin(a), ox = p.x - ctr.x, oy = p.y - ctr.y;
+      setPos(r, ctr.x + ox * cs - oy * sn, ctr.y + ox * sn + oy * cs, p.rot + deg); });
+  }
+  function linkIn(c, aId, bId) {
+    const a = c.walls.find(x => x.id === aId), b = c.walls.find(x => x.id === bId); if (!a || !b) throw new Error('Стена не найдена');
+    if (!a.roomId || !b.roomId || a.roomId === b.roomId) throw new Error('Общая стена — это две стены разных помещений');
+    if (!(a.src.shared === bId && b.src.shared === aId)) { clearShared(c, a, c.notes); clearShared(c, b, c.notes); a.src.shared = bId; b.src.shared = aId; }
+    if (!unk(a.src.len) && !unk(b.src.len) && Math.abs(a.src.len - b.src.len) > 1e-6) c.notes.push('Длины связанных стен различаются (' + fmtM(a.src.len) + ' и ' + fmtM(b.src.len) + ' м): общая только часть стены');
+    if (a.a && b.a) { const ra = c.rooms.find(x => x.id === a.roomId), rb = c.rooms.find(x => x.id === b.roomId), t = touch({a: toWorld(ra, a.a), b: toWorld(ra, a.b)}, {a: toWorld(rb, b.a), b: toWorld(rb, b.b)}, MOVE_TOL, ANG_TOL);
+      if (!t || !(t.overlap > 1e-6)) c.notes.push('На плане эти стены не лежат рядом: сдвиньте комнату или «Прижать к другой стене»'); }
+  }
+  const linkWalls = (d, aId, bId) => edit(d, c => { linkIn(c, aId, bId); });
+  const unlinkWall = (d, wallId) => edit(d, c => { const w = c.walls.find(x => x.id === wallId); if (!w) throw new Error('Стена не найдена: ' + wallId); if (unk(w.src.shared)) throw new Error('У стены нет общей стены');
+    const o = c.walls.find(x => x.id === w.src.shared); if (o) delete o.src.shared; delete w.src.shared; });
+  // Прижать комнату стены wallId к стене targetId другой комнаты: комната поворачивается и сдвигается так, чтобы стены легли вплотную (внутренности по разные стороны),
+  // начало одной совпало с концом другой (угол к углу; дальше — перетаскиванием). opts.link (по умолчанию да) — связать стены как общие
+  function alignRoomToWall(d, wallId, targetId, opts) {
+    opts = opts || {};
+    return edit(d, c => { const w = c.walls.find(x => x.id === wallId), t = c.walls.find(x => x.id === targetId); if (!w || !t) throw new Error('Стена не найдена');
+      if (!w.roomId || !t.roomId || w.roomId === t.roomId) throw new Error('Выберите стену другого помещения'); const r = roomEd(c, w.roomId), tr = roomEd(c, t.roomId);
+      const wa = toWorld(r, w.a), wb = toWorld(r, w.b), ta = toWorld(tr, t.a), tb = toWorld(tr, t.b), same = (signedArea(r.vertices) >= 0) === (signedArea(tr.vertices) >= 0);
+      const hm = Math.atan2(wb.y - wa.y, wb.x - wa.x), ht = Math.atan2(tb.y - ta.y, tb.x - ta.x) + (same ? Math.PI : 0), th = normAngle(deg(ht - hm)), a = rad(th), cs = Math.cos(a), sn = Math.sin(a), p = posOf(r), ox = p.x - wa.x, oy = p.y - wa.y;
+      const anchor = same ? tb : ta; setPos(r, wa.x + ox * cs - oy * sn + (anchor.x - wa.x), wa.y + ox * sn + oy * cs + (anchor.y - wa.y), p.rot + th);
+      if (opts.link !== false) linkIn(c, wallId, targetId); });
+  }
+  // Предложения общих стен: пары стен разных помещений, лежащие на плане рядом (параллельны, зазор ≤ tol, есть общий кусок), ещё не связанные. opts: {tol (0.05 м), roomId}
+  function findSharedWalls(d, opts) {
+    opts = opts || {}; const tol = unk(opts.tol) ? MOVE_TOL : +opts.tol, E = worldEdges(d), out = [];
+    for (let i = 0; i < E.length; i++) for (let j = i + 1; j < E.length; j++) { const e = E[i], f = E[j]; if (e.roomId === f.roomId) continue; if (opts.roomId && e.roomId !== opts.roomId && f.roomId !== opts.roomId) continue;
+      const we = d.walls.find(x => x.id === e.wallId), wf = d.walls.find(x => x.id === f.wallId); if (we.src.shared === f.wallId && wf.src.shared === e.wallId) continue;
+      const t = touch(e, f, tol, ANG_TOL); if (t && t.overlap > Math.max(tol, 1e-6)) out.push({a: e.wallId, b: f.wallId, overlap: round9(t.overlap), lenA: we.src.len, lenB: wf.src.len, gap: round9(Math.abs(t.off))}); }
+    return out.sort((x, y) => y.overlap - x.overlap);
+  }
+
   // Отмена/повтор: снимки геометрии, без ограничения глубины. История в проект не попадает
   function createHistory(geometry) {
     const past = [], future = []; let cur = {g: clone(geometry), reason: 'start'};
@@ -367,8 +437,8 @@
     };
   }
 
-  SM.planner = Object.assign(SM.planner || {}, {VERSION: '0.4.0', CONTRACT: 1,
-    fromGeometry, toGeometry, moveVertex, snapPoint, toWorld, toLocal, finish, measure, describe, createHistory, vertexAngle, nearestOnContour,
-    ops: {moveVertex, setWallLength, setVertexAngle, splitWall, removeVertex, setWallProps, setRoomProps, addRoomFromPoints, addRoomRect, addRoomL, removeRoom, splitRoom, addOpening, moveOpening, setOpeningProps, attachOpening, detachOpening, removeOpening}});
+  SM.planner = Object.assign(SM.planner || {}, {VERSION: '0.5.0', CONTRACT: 1,
+    fromGeometry, toGeometry, moveVertex, snapPoint, toWorld, toLocal, finish, measure, describe, createHistory, vertexAngle, nearestOnContour, snapRoomMove, findSharedWalls,
+    ops: {moveVertex, setWallLength, setVertexAngle, splitWall, removeVertex, setWallProps, setRoomProps, addRoomFromPoints, addRoomRect, addRoomL, removeRoom, splitRoom, addOpening, moveOpening, setOpeningProps, attachOpening, detachOpening, removeOpening, moveRoom, rotateRoom, linkWalls, unlinkWall, alignRoomToWall}});
 })(typeof window !== 'undefined' ? window : globalThis);
 if (typeof module !== 'undefined') module.exports = (typeof window !== 'undefined' ? window : globalThis).SM;
