@@ -1,4 +1,7 @@
 # Журнал CAD-модуля
+## 0.3.0 — срез 3: правка стен
+Ядро: `SM.planner.ops` (`moveVertex`, `setWallLength`, `setVertexAngle`, `splitWall`, `removeVertex`, `setWallProps`, `setRoomProps`, `addRoomRect/L/FromPoints`, `splitRoom`, `removeRoom`), `vertexAngle`, `nearestOnContour`, `toLocal`; комната не прыгает при правке (P9). Интерфейс: ручки углов (мышь/касание), панель числового ввода (длина, угол, толщина, разделение, название, высота), «＋ Комната», перегородка кликами, отмена/повтор (кнопки, Ctrl+Z/Y), привязка к сетке, `onChange`. Стенд: режим правки, выбор шага сетки. Тесты: `tests/planner-edit.test.js` (16), `tests/planner-ui-edit.test.js` (15).
+
 ## 0.2.0 — срез 2: просмотр
 `js/planner-ui.js` (`SM.planner.mount`, только чтение: помещения, стены с толщиной, проёмы, предметы, размеры, сетка, масштаб/сдвиг мышью и касанием, выбор), `planner.html` (стенд: эталонная ванная, вымышленный пример из 3 помещений, панель свойств, замечания, список проёмов без привязки), `SM.planner.describe`. Тесты `tests/planner-ui.test.js` (10 проверок, jsdom).
 

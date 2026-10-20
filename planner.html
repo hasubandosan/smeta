@@ -23,9 +23,10 @@ table{border-collapse:collapse;width:100%}td{padding:2px 4px;vertical-align:top;
 </style>
 </head>
 <body>
-<header><h1>2D-планировщик (стенд, только просмотр)</h1>
+<header><h1>2D-планировщик (стенд)</h1>
 <label>Данные: <select id="data"><option value="bath">Эталонная ванная</option><option value="demo">Вымышленный пример (3 помещения)</option><option value="empty">Пусто</option></select></label>
-<span class="mut" id="ver"></span></header>
+<label>Привязка к сетке: <select id="grid"><option value="">нет</option><option value="0.01">1 см</option><option value="0.05">5 см</option><option value="0.1">10 см</option><option value="0.5">50 см</option></select></label>
+<span class="mut" id="ver"></span><span class="mut">Изменения живут только на этой странице (сохранения нет).</span></header>
 <main><div id="plan"></div>
 <aside><h2>Выбрано</h2><div id="info" class="mut">Нажмите на помещение, стену, проём или предмет.</div>
 <h2>Помещения</h2><ul id="rooms"></ul>
@@ -56,7 +57,7 @@ table{border-collapse:collapse;width:100%}td{padding:2px 4px;vertical-align:top;
   function showInfo(ids) {
     var box = $('info'); box.textContent = '';
     if (!ids.length) { box.className = 'mut'; box.textContent = 'Нажмите на помещение, стену, проём или предмет.'; return; }
-    box.className = ''; var d = SM.planner.describe(geometry, ids[0]); if (!d) return;
+    box.className = ''; var d = SM.planner.describe(geometry, ids[0]); if (!d && /^v:/.test(ids[0])) d = {title: 'Угол помещения', rows: [['Правка', 'перетащите или введите значения в панели на плане']]}; if (!d) return;
     var t = document.createElement('div'); t.textContent = d.title; t.style.fontWeight = '600'; box.appendChild(t);
     var tb = document.createElement('table'); d.rows.forEach(function (r) { var tr = tb.insertRow(); tr.insertCell().textContent = r[0]; tr.insertCell().textContent = r[1]; }); box.appendChild(tb);
     if (ids.length > 1) { var m = document.createElement('div'); m.className = 'mut'; m.textContent = 'и ещё выбрано: ' + (ids.length - 1); box.appendChild(m); }
@@ -70,9 +71,10 @@ table{border-collapse:collapse;width:100%}td{padding:2px 4px;vertical-align:top;
   }
   function start() {
     $('plan').textContent = ''; $('ver').textContent = 'модуль v' + SM.planner.VERSION + ', контракт ' + SM.planner.CONTRACT; showInfo([]);
-    h = SM.planner.mount($('plan'), {geometry: geometry, readOnly: true, onSelect: showInfo, onIssues: lists});
+    h = SM.planner.mount($('plan'), {geometry: geometry, readOnly: false, grid: $('grid').value || null, onSelect: showInfo, onChange: function (g) { geometry = g; showInfo(h.selected()); }, onIssues: lists});
   }
   $('data').onchange = function () { geometry = sets[this.value](); start(); };
+  $('grid').onchange = function () { h.setGrid(this.value || null); };
   start();
 })();
 </script>
