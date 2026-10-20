@@ -1,0 +1,37 @@
+// Проёмы CAD-планировщика (срез 4), ядро: node tests/planner-open.test.js
+const assert = require('assert'), SM = require('../js/core.js');
+for (const f of ['geometry', 'model', 'seeds', 'rules', 'ver', 'estimate', 'storage', 'planner']) require('../js/' + f + '.js');
+let n = 0; const t = (name, f) => { f(); n++; console.log('OK   ' + name); };
+const P = SM.planner, O = P.ops, J = x => JSON.stringify(x), near = (a, b) => assert.ok(Math.abs(a - b) < 1e-6, a + ' ≠ ' + b);
+const rect = () => ({walls: [{id: 'a', len: 4, turn: 90}, {id: 'b', len: 3, turn: 90}, {id: 'c', len: 4, turn: 90}, {id: 'd', len: 3, turn: null}], openings: [], rooms: [{id: 'r', name: 'тест', height: 2.5, wallIds: ['a', 'b', 'c', 'd']}]});
+const out = (d, base) => { const g = P.toGeometry(d, base), v = SM.geo.validate(g); assert.ok(v.ok, J(v.issues)); return g; };
+const pure = (g, f) => { const d = P.fromGeometry(g), s = J(d); const r = f(d); assert.strictEqual(J(d), s, 'вход не изменён'); return r; };
+
+t('addOpening: по центру стены, помещение берётся от стены, поля контракта, created', () => { const g = rect(), d = pure(g, d => O.addOpening(d, 'a', {kind: 'дверь', w: 0.9, h: 2.1, sill: 0}));
+  const o = out(d, g).openings[0]; assert.deepStrictEqual([o.wallId, o.roomId, o.kind, o.w, o.h, o.sill, o.swing], ['a', 'r', 'дверь', 0.9, 2.1, 0, null]); near(o.at, 1.55); assert.strictEqual(d.created.openingId, o.id); assert.deepStrictEqual(d.notes, []);
+  const p = d.openings[0]; near(p.p1.x, 1.55); near(p.p2.x, 2.45); });
+t('addOpening: ошибки по-русски; без ширины и без длины стены — не выдумываем', () => { const d = P.fromGeometry(rect());
+  for (const bad of [0, -1, 'x', null, '']) assert.throws(() => O.addOpening(d, 'a', {w: bad}), /Ширина проёма/);
+  assert.throws(() => O.addOpening(d, 'нет', {w: 1}), /не найдена/); assert.throws(() => O.addOpening(d, 'a', {w: 1, at: -1}), /не меньше 0/); assert.throws(() => O.addOpening(d, 'a', {w: 1, swing: 'up'}), /Открывание/); assert.throws(() => O.addOpening(d, 'a', {w: 1, h: -2}), /Высота проёма/);
+  const g = rect(); g.walls[0].len = null; assert.throws(() => O.addOpening(P.fromGeometry(g), 'a', {w: 1}), /Укажите расстояние/); });
+t('moveOpening / setOpeningProps: числа, пусто = не задано (null), swing', () => { const g = rect(); let d = O.addOpening(P.fromGeometry(g), 'a', {kind: 'окно', w: 1, at: 0.5}), id = d.created.openingId;
+  d = pure(P.toGeometry(d, g), x => O.moveOpening(x, id, 2)); near(d.openings[0].src.at, 2);
+  d = O.setOpeningProps(d, id, {h: 1.4, sill: 0.9, swing: 'in', kind: 'окно большое'}); assert.deepStrictEqual([d.openings[0].src.h, d.openings[0].src.sill, d.openings[0].src.swing], [1.4, 0.9, 'in']);
+  d = O.setOpeningProps(d, id, {h: '', sill: null, swing: ''}); assert.deepStrictEqual([d.openings[0].src.h, d.openings[0].src.sill, d.openings[0].src.swing], [null, null, null]);
+  assert.throws(() => O.moveOpening(d, id, -1), /не меньше 0/); assert.throws(() => O.moveOpening(d, id, null), /Расстояние/); assert.throws(() => O.setOpeningProps(d, id, {foo: 1}), /не правится/); assert.throws(() => O.setOpeningProps(d, 'нет', {w: 1}), /не найден/); });
+t('выход за стену и пересечение — предупреждения в notes, а не запрет; validate ok', () => { const g = rect(); let d = O.addOpening(P.fromGeometry(g), 'a', {w: 1, at: 1}); const a = d.created.openingId;
+  d = O.addOpening(d, 'a', {w: 1, at: 1.5}); assert.ok(d.notes.some(x => /пересекается/.test(x))); assert.ok(SM.geo.validate(P.toGeometry(d, g)).ok);
+  d = O.moveOpening(d, a, 3.5); assert.ok(d.notes.some(x => /выходит за край/.test(x))); const v = SM.geo.validate(P.toGeometry(d, g)); assert.ok(v.ok && v.issues.some(x => x.code === 'opening_out')); });
+t('эталонная ванная: проём без привязки → attachOpening (стена + расстояние), при пустом расстоянии по центру', () => { const base = SM.seeds.bathroom().geometry, d0 = P.fromGeometry(base), o0 = base.openings[0], w0 = base.walls[0];
+  assert.strictEqual(d0.openings.filter(o => !o.src.wallId).length, 3); const d = pure(base, x => O.attachOpening(x, o0.id, w0.id, 0.4)), g = out(d, base), o = g.openings.find(x => x.id === o0.id);
+  assert.deepStrictEqual([o.wallId, o.roomId, o.at, o.w, o.h, o.kind], [w0.id, base.rooms[0].id, 0.4, 0.9, 2.1, 'дверь']); assert.strictEqual(d.openings.find(x => x.id === o0.id).p1.x, 0.4);
+  const o2 = out(O.attachOpening(d0, base.openings[1].id, w0.id), base).openings[1]; near(o2.at, (3.5 - 0.8) / 2); assert.strictEqual(out(d, base).openings.filter(x => !x.wallId).length, 2); });
+t('attachOpening: окно без ширины по центру не поставить; другое помещение — перенос с предупреждением', () => { const g = rect(); g.openings.push({id: 'o', wallId: null, roomId: 'zzz', kind: 'окно', w: null, h: null}); const d = P.fromGeometry(g);
+  assert.throws(() => O.attachOpening(d, 'o', 'a'), /Укажите расстояние/); const x = O.attachOpening(d, 'o', 'a', 1); assert.ok(x.notes.some(s => /перенесён/.test(s))); assert.strictEqual(x.openings[0].src.roomId, 'r'); assert.strictEqual(x.openings[0].p1, null, 'без ширины на плане не рисуется'); });
+t('detachOpening и removeOpening; остальные проёмы и id нетронуты', () => { const g = rect(); let d = O.addOpening(P.fromGeometry(g), 'a', {w: 1, at: 0.2}); const a = d.created.openingId; d = O.addOpening(d, 'b', {w: 1, at: 0.2}); const b = d.created.openingId;
+  const e = O.detachOpening(d, a); assert.strictEqual(e.openings[0].src.wallId, null); assert.ok(!('at' in e.openings[0].src)); assert.strictEqual(e.openings[0].src.roomId, 'r'); assert.ok(SM.geo.validate(P.toGeometry(e, g)).ok);
+  const r = out(O.removeOpening(d, a), g); assert.deepStrictEqual(r.openings.map(x => x.id), [b]); assert.throws(() => O.removeOpening(d, 'нет'), /не найден/); });
+t('splitWall переносит проёмы; round-trip сохраняет неизвестные поля проёма', () => { const g = rect(); g.openings.push({id: 'o', wallId: 'a', roomId: 'r', kind: 'дверь', w: 0.8, h: 2, at: 3, extra: {x: 1}}); const d = O.splitWall(P.fromGeometry(g), 'a', 2), o = out(d, g).openings[0];
+  assert.notStrictEqual(o.wallId, 'a'); near(o.at, 1); assert.deepStrictEqual(o.extra, {x: 1}); assert.strictEqual(J(P.toGeometry(P.fromGeometry(g), g)), J(g)); });
+t('версия модуля 0.4.0, операции экспортированы', () => { assert.strictEqual(P.VERSION, '0.4.0'); for (const k of ['addOpening', 'moveOpening', 'setOpeningProps', 'attachOpening', 'detachOpening', 'removeOpening']) assert.strictEqual(typeof O[k], 'function'); });
+console.log('Всего: ' + n);

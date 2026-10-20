@@ -1,4 +1,7 @@
 # Журнал CAD-модуля
+## 0.4.0 — срез 4: проёмы
+Ядро: `ops.addOpening, moveOpening, setOpeningProps, attachOpening, detachOpening, removeOpening` (P16–P18). Интерфейс: панель проёма (вид, ширина, высота, низ от пола, расстояние от начала стены, открывание), красная ручка перетаскивания вдоль стены (мышь/касание, привязка к сетке), дуга открывания, добавление проёма из панели стены, привязка проёма без стены — выбором стены и числом или кликом по стене на плане, отвязка, удаление. Ошибка ввода больше не стирает уже набранные поля панели. Тесты: `tests/planner-open.test.js` (9), `tests/planner-ui-open.test.js` (10).
+
 ## 0.3.0 — срез 3: правка стен
 Ядро: `SM.planner.ops` (`moveVertex`, `setWallLength`, `setVertexAngle`, `splitWall`, `removeVertex`, `setWallProps`, `setRoomProps`, `addRoomRect/L/FromPoints`, `splitRoom`, `removeRoom`), `vertexAngle`, `nearestOnContour`, `toLocal`; комната не прыгает при правке (P9). Интерфейс: ручки углов (мышь/касание), панель числового ввода (длина, угол, толщина, разделение, название, высота), «＋ Комната», перегородка кликами, отмена/повтор (кнопки, Ctrl+Z/Y), привязка к сетке, `onChange`. Стенд: режим правки, выбор шага сетки. Тесты: `tests/planner-edit.test.js` (16), `tests/planner-ui-edit.test.js` (15).
 

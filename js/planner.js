@@ -309,6 +309,52 @@
   }
 
 
+  // ===== Проёмы (срез 4). Те же правила: вход не меняется, ошибки по-русски; notes — предупреждения (выход за стену, пересечение проёмов), created = {openingId}
+  const SWINGS = ['in', 'out', 'sliding'];
+  const optNum = (v, label, strict) => { if (unk(v) || v === '') return null; if (!isFinite(+v) || (strict ? !(+v > 0) : +v < 0)) throw new Error(label + ' должна быть ' + (strict ? 'положительным' : 'неотрицательным') + ' числом или пустой (не задано)'); return +v; };
+  const atNum = v => { if (unk(v) || v === '' || !isFinite(+v) || +v < 0) throw new Error('Расстояние от начала стены должно быть числом, не меньше 0'); return round9(+v); };
+  const swingVal = v => { if (unk(v) || v === '') return null; if (SWINGS.indexOf(v) < 0) throw new Error('Открывание: in (внутрь), out (наружу), sliding (раздвижное) или пусто'); return v; };
+  const openEd = (c, id) => { const o = c.openings.find(x => x.id === id); if (!o) throw new Error('Проём не найден: ' + id); return o; };
+  const wallOf = (c, id) => { const w = c.walls.find(x => x.id === id); if (!w) throw new Error('Стена не найдена: ' + id); if (!w.roomId) throw new Error('Стена не принадлежит помещению'); return w; };
+  function openingNotes(c, o) {
+    const out = [], w = c.walls.find(x => x.id === o.src.wallId); if (!w || unk(o.src.at) || unk(o.src.w)) return out;
+    const s = +o.src.at, e = s + +o.src.w, nm = '«' + (o.src.kind || o.id) + '»';
+    if (!unk(w.src.len) && e > +w.src.len + EPS) out.push('Проём ' + nm + ' выходит за край стены (до ' + fmtM(e) + ' м при длине ' + fmtM(w.src.len) + ' м)');
+    for (const q of c.openings) { if (q === o || q.src.wallId !== w.id || unk(q.src.at) || unk(q.src.w)) continue; const s2 = +q.src.at, e2 = s2 + +q.src.w; if (s < e2 - EPS && s2 < e - EPS) out.push('Проём ' + nm + ' пересекается с проёмом «' + (q.src.kind || q.id) + '»'); }
+    return out;
+  }
+  // По центру стены, если расстояние не задано и известны длина стены и ширина проёма (удобство интерфейса, не норма)
+  function centerAt(w, ow) { if (unk(w.src.len) || unk(ow)) throw new Error('Укажите расстояние от начала стены: по центру не поставить, пока неизвестна длина стены или ширина проёма'); return round9(Math.max(0, (+w.src.len - +ow) / 2)); }
+  function addOpening(d, wallId, props) {
+    props = props || {};
+    return edit(d, c => { const w = wallOf(c, wallId), ww = optNum(props.w, 'Ширина проёма', true); if (ww === null) throw new Error('Ширина проёма должна быть положительным числом');
+      const at = unk(props.at) || props.at === '' ? centerAt(w, ww) : atNum(props.at), id = SM.uid();
+      const src = {id, roomId: w.roomId, wallId, kind: unk(props.kind) || props.kind === '' ? 'проём' : String(props.kind), w: ww, h: optNum(props.h, 'Высота проёма', true), at, sill: optNum(props.sill, 'Низ от пола', false), swing: swingVal(props.swing)};
+      const o = {id, src, wallId, p1: null, p2: null}; c.openings.push(o); c.created = {openingId: id}; c.notes.push(...openingNotes(c, o)); });
+  }
+  function setOpeningProps(d, id, props) {
+    return edit(d, c => { const o = openEd(c, id);
+      for (const k of Object.keys(props || {})) { const v = props[k];
+        if (k === 'kind') { if (unk(v) || v === '') delete o.src.kind; else o.src.kind = String(v); }
+        else if (k === 'w') o.src.w = optNum(v, 'Ширина проёма', true);
+        else if (k === 'h') o.src.h = optNum(v, 'Высота проёма', true);
+        else if (k === 'sill') o.src.sill = optNum(v, 'Низ от пола', false);
+        else if (k === 'swing') o.src.swing = swingVal(v);
+        else if (k === 'at') { if (!o.src.wallId) throw new Error('Сначала привяжите проём к стене'); o.src.at = atNum(v); }
+        else throw new Error('Это свойство проёма здесь не правится: ' + k); }
+      c.notes.push(...openingNotes(c, o)); });
+  }
+  const moveOpening = (d, id, at) => setOpeningProps(d, id, {at});
+  // Привязать к стене: wallId + расстояние at от начала стены (пусто — по центру). Проём переходит в помещение этой стены
+  function attachOpening(d, id, wallId, at) {
+    return edit(d, c => { const o = openEd(c, id), w = wallOf(c, wallId), a = unk(at) || at === '' ? centerAt(w, o.src.w) : atNum(at);
+      if (o.src.roomId && o.src.roomId !== w.roomId) c.notes.push('Проём перенесён в помещение «' + ((c.rooms.find(r => r.id === w.roomId) || {src: {}}).src.name || w.roomId) + '»');
+      o.src.wallId = wallId; o.wallId = wallId; o.src.roomId = w.roomId; o.src.at = a; c.notes.push(...openingNotes(c, o)); });
+  }
+  const detachOpening = (d, id) => edit(d, c => { const o = openEd(c, id); o.src.wallId = null; o.wallId = null; delete o.src.at; });
+  const removeOpening = (d, id) => edit(d, c => { const o = openEd(c, id); c.openings = c.openings.filter(x => x !== o); });
+
+
   // Отмена/повтор: снимки геометрии, без ограничения глубины. История в проект не попадает
   function createHistory(geometry) {
     const past = [], future = []; let cur = {g: clone(geometry), reason: 'start'};
@@ -321,8 +367,8 @@
     };
   }
 
-  SM.planner = Object.assign(SM.planner || {}, {VERSION: '0.3.0', CONTRACT: 1,
+  SM.planner = Object.assign(SM.planner || {}, {VERSION: '0.4.0', CONTRACT: 1,
     fromGeometry, toGeometry, moveVertex, snapPoint, toWorld, toLocal, finish, measure, describe, createHistory, vertexAngle, nearestOnContour,
-    ops: {moveVertex, setWallLength, setVertexAngle, splitWall, removeVertex, setWallProps, setRoomProps, addRoomFromPoints, addRoomRect, addRoomL, removeRoom, splitRoom}});
+    ops: {moveVertex, setWallLength, setVertexAngle, splitWall, removeVertex, setWallProps, setRoomProps, addRoomFromPoints, addRoomRect, addRoomL, removeRoom, splitRoom, addOpening, moveOpening, setOpeningProps, attachOpening, detachOpening, removeOpening}});
 })(typeof window !== 'undefined' ? window : globalThis);
 if (typeof module !== 'undefined') module.exports = (typeof window !== 'undefined' ? window : globalThis).SM;

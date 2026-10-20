@@ -1,4 +1,4 @@
-/* CAD-планировщик, интерфейс (SVG). Срез 2: просмотр. Срез 3: правка стен — вершины мышью/пальцем, длина и угол числом, разделение стены, убрать угол, новые комнаты, перегородка, отмена/повтор.
+/* CAD-планировщик, интерфейс (SVG). Срез 2: просмотр. Срез 3: правка стен; срез 4: проёмы — вершины мышью/пальцем, длина и угол числом, разделение стены, убрать угол, новые комнаты, перегородка, отмена/повтор.
    Ничего не хранит и не обращается к localStorage/fetch; всё получает через opts (docs/CAD_CONTRACT.md, раздел 5). Мышь и касание (pointer events). */
 (function (root) {
   'use strict';
@@ -13,7 +13,7 @@
     '.pl-open{stroke-linecap:butt;fill:none;stroke:var(--pl-open,#7a8594)}.pl-open.door{stroke:var(--pl-door,#a0642a)}.pl-open.win{stroke:var(--pl-win,#2a7fc7)}' +
     '.pl-fix{fill:var(--pl-fix,#fff);stroke:var(--pl-fixl,#5a6472);stroke-width:1.5;cursor:pointer}.pl-sel{stroke:var(--pl-sel,#e0301e)!important;stroke-width:3.5!important}.pl-room.pl-sel{fill:var(--pl-roomsel,#fde9e6)}' +
     '.pl-vtx{fill:var(--pl-vtxfill,#fff);stroke:var(--pl-sel,#e0301e);stroke-width:2;cursor:move}.pl-vtx.pl-sel{fill:var(--pl-sel,#e0301e)}.pl-mark{fill:var(--pl-sel,#e0301e);stroke:none;pointer-events:none}' +
-    '.pl-txt{fill:var(--pl-text,#1f2630);font:12px system-ui,sans-serif;pointer-events:none}.pl-dim{fill:var(--pl-dim,#4a5563);font:11px system-ui,sans-serif;pointer-events:none}.pl-note{fill:var(--pl-dim,#4a5563);font:11px system-ui,sans-serif}';
+    '.pl-txt{fill:var(--pl-text,#1f2630);font:12px system-ui,sans-serif;pointer-events:none}.pl-dim{fill:var(--pl-dim,#4a5563);font:11px system-ui,sans-serif;pointer-events:none}.pl-note{fill:var(--pl-dim,#4a5563);font:11px system-ui,sans-serif}.pl-swing{fill:none;stroke:var(--pl-open,#7a8594);stroke-width:1;pointer-events:none}';
   const kindClass = k => /дверь|door/i.test(k || '') ? 'door' : /окно|window/i.test(k || '') ? 'win' : '';
 
   P.mount = function (el, opts) {
@@ -79,7 +79,11 @@
       for (const o of drawing.openings) { if (!o.p1) continue; const r = wallRoom.get(o.src.wallId); if (!r) continue; const A = S(P.toWorld(r, o.p1)), B = S(P.toWorld(r, o.p2)), w = drawing.walls.find(x => x.id === o.src.wallId);
         const th = Math.max(5, w && !unk(w.src.thickness) ? w.src.thickness * k + 2 : 5), at = {x1: A[0], y1: A[1], x2: B[0], y2: B[1]};
         mk('line', Object.assign({class: 'pl-open ' + kindClass(o.src.kind) + (isSel(o.id) ? ' pl-sel' : ''), 'stroke-width': th}, at), svg);
-        mk('line', Object.assign({class: 'pl-hit', 'data-id': o.id, 'data-kind': 'opening'}, at), svg); }
+        mk('line', Object.assign({class: 'pl-hit', 'data-id': o.id, 'data-kind': 'opening'}, at), svg);
+        if ((o.src.swing === 'in' || o.src.swing === 'out') && !unk(o.src.w) && +o.src.w > 0) { // шарнир у начала проёма (в контракте стороны петель нет, см. P17)
+          const pw = worldPts(r), nn = pw.length, ccw = pw.reduce((a, p, i) => a + p.x * pw[(i + 1) % nn].y - pw[(i + 1) % nn].x * p.y, 0) >= 0, H = P.toWorld(r, o.p1), E = P.toWorld(r, o.p2), L = Math.hypot(E.x - H.x, E.y - H.y),
+            ux = (E.x - H.x) / L, uy = (E.y - H.y) / L, lx = ccw ? -uy : uy, ly = ccw ? ux : -ux, sg = o.src.swing === 'in' ? 1 : -1, T = {x: H.x + sg * lx * L, y: H.y + sg * ly * L}, h2 = S(H), t2 = S(T), e2 = S(E), cr = (t2[0] - h2[0]) * (e2[1] - h2[1]) - (t2[1] - h2[1]) * (e2[0] - h2[0]);
+          mk('path', {class: 'pl-swing', d: 'M' + h2[0] + ' ' + h2[1] + 'L' + t2[0] + ' ' + t2[1] + 'A' + L * k + ' ' + L * k + ' 0 0 ' + (cr > 0 ? 1 : 0) + ' ' + e2[0] + ' ' + e2[1]}, svg); } }
       // подписи длин стен (снаружи контура) и названия помещений
       for (const r of drawing.rooms) { if (!r.vertices || !r.closed) continue; const pts = worldPts(r), n = pts.length;
         const area2 = pts.reduce((a, p, i) => a + p.x * pts[(i + 1) % n].y - pts[(i + 1) % n].x * p.y, 0), ccw = area2 >= 0;
@@ -92,7 +96,8 @@
           // ручки вершин (правка) и точки перегородки
       if (!readOnly) { const rs = handleRooms();
         for (const r of drawing.rooms) { if (!rs.has(r.id) || !r.vertices || !r.closed) continue;
-          r.vertices.forEach((v, i) => { const c = S(P.toWorld(r, v)), id = vid(r.id, i); mk('circle', {class: 'pl-vtx' + (isSel(id) ? ' pl-sel' : ''), cx: c[0], cy: c[1], r: 8, 'data-vid': id, 'data-kind': 'vertex'}, svg); }); } }
+          r.vertices.forEach((v, i) => { const c = S(P.toWorld(r, v)), id = vid(r.id, i); mk('circle', {class: 'pl-vtx' + (isSel(id) ? ' pl-sel' : ''), cx: c[0], cy: c[1], r: 8, 'data-vid': id, 'data-kind': 'vertex'}, svg); }); }
+        for (const o of drawing.openings) if (isSel(o.id) && o.p1) { const r = wallRoom.get(o.src.wallId); if (!r) continue; const c = S(P.toWorld(r, {x: (o.p1.x + o.p2.x) / 2, y: (o.p1.y + o.p2.y) / 2})); mk('circle', {class: 'pl-vtx pl-sel', cx: c[0], cy: c[1], r: 8, 'data-oid': o.id, 'data-kind': 'oh'}, svg); } }
       if (mode) { const r = drawing.rooms.find(x => x.id === mode.roomId); if (r) mode.pts.forEach(q => { const c = S(P.toWorld(r, q)); mk('circle', {class: 'pl-mark', cx: c[0], cy: c[1], r: 6}, svg); }); }
     }
     const schedule = () => { if (scheduled || dead) return; scheduled = true; raf(render); };
@@ -111,13 +116,13 @@
       let g, v; try { g = P.toGeometry(d2, geometry); v = SM.geo.validate(g); } catch (e) { preview = null; setMsg(e.message, 'error'); render(); return {ok: false, message: e.message}; }
       if (!v.ok) { const e = v.issues.find(x => x.level === 'error'), m = 'Так нельзя: ' + (e ? e.text : 'геометрия не проходит проверку'); preview = null; setMsg(m, 'error'); render(); panelRender(); return {ok: false, message: m}; }
       geometry = g; history.push(g, reason); drawing = P.fromGeometry(g); preview = null; created = d2.created || null;
-      if (created && created.roomId) { sel = [created.roomId]; fitted = true; fitTo(bounds()); } sel = sel.filter(validSel);
+      if (created && created.roomId) { sel = [created.roomId]; fitted = true; fitTo(bounds()); } if (created && created.openingId) sel = [created.openingId]; sel = sel.filter(validSel);
       setMsg((d2.notes || []).join('. '), ''); if (typeof opts.onChange === 'function') opts.onChange(clone(g), {reason}); if (typeof opts.onIssues === 'function') opts.onIssues(v.issues);
       chrome(); render(); panelRender(); return {ok: true, message: msg.text, created};
     }
     function edit(name, ...args) {
       if (readOnly) return {ok: false, message: 'Режим просмотра: правка отключена'};
-      const f = P.ops[name]; if (!f) return {ok: false, message: 'Неизвестная операция: ' + name}; let d2; try { d2 = f(drawing, ...args); } catch (e) { setMsg(e.message, 'error'); panelRender(); return {ok: false, message: e.message}; }
+      const f = P.ops[name]; if (!f) return {ok: false, message: 'Неизвестная операция: ' + name}; let d2; try { d2 = f(drawing, ...args); } catch (e) { setMsg(e.message, 'error'); return {ok: false, message: e.message}; }
       return commit(d2, name);
     }
     function jump(g, reason) { geometry = g; drawing = P.fromGeometry(g); preview = null; sel = sel.filter(validSel); mode = null; setMsg('', ''); if (typeof opts.onChange === 'function') opts.onChange(clone(g), {reason}); if (typeof opts.onIssues === 'function') opts.onIssues(SM.geo.validate(g).issues); chrome(); render(); panelRender(); }
@@ -134,7 +139,7 @@
     function chrome() { tool.style.display = readOnly ? 'none' : 'flex'; bUndo.disabled = !history.canUndo(); bRedo.disabled = !history.canRedo(); }
     const num = v => { v = String(v).trim().replace(',', '.'); if (v === '') return null; const x = Number(v); if (!isFinite(x)) throw new Error('Введите число, например 3,5'); return x; };
     const show = v => unk(v) ? '' : String(Math.round(+v * 1000) / 1000).replace('.', ',');
-    function run(f) { try { f(); } catch (e) { setMsg(e.message, 'error'); panelRender(); } }
+    function run(f) { try { f(); } catch (e) { setMsg(e.message, 'error'); } }   // поля не перерисовываем: введённое не пропадает
     function sect(title) { const d = H('div', 'margin:4px 0'); if (title) d.appendChild(H('b', '', title)); panel.appendChild(d); return d; }
     function row(parent, label, value, key, btn, fn) {
       const r = H('div', 'display:flex;gap:6px;align-items:center;margin:3px 0;flex-wrap:wrap'), l = H('label', 'min-width:120px', label), i = H('input', 'width:90px;font:inherit;padding:3px'); i.type = 'text'; i.inputMode = 'decimal'; i.value = value; i.setAttribute('data-f', key);
@@ -142,6 +147,7 @@
       if (btn) { const b = H('button', 'font:inherit;padding:3px 8px;cursor:pointer', 'Применить'); b.type = 'button'; b.setAttribute('data-act', btn); b.addEventListener('click', go); r.appendChild(b); } parent.appendChild(r); return i; }
     function act(parent, text, key, fn) { const b = H('button', 'font:inherit;padding:3px 8px;margin:2px 6px 2px 0;cursor:pointer', text); b.type = 'button'; b.setAttribute('data-act', key); b.addEventListener('click', () => run(fn)); parent.appendChild(b); return b; }
     function choose(parent, label, key, list, val) { const r = H('div', 'margin:3px 0'), sel = H('select', 'font:inherit;padding:3px;max-width:100%'); sel.setAttribute('data-f', key); list.forEach(o => { const e = H('option', '', o[1]); e.value = o[0]; if (o[0] === val) e.selected = true; sel.appendChild(e); }); r.appendChild(H('label', 'margin-right:6px', label)); r.appendChild(sel); parent.appendChild(r); return sel; }
+    function wallOpts(o) { const own = [], rest = []; drawing.rooms.forEach(r => { if (!r.vertices) return; (r.src.wallIds || []).forEach(wid => { const w = drawing.walls.find(x => x.id === wid); if (w && w.a) (r.id === o.roomId ? own : rest).push([wid, (r.src.name || r.id) + ': ' + (w.src.name || wid)]); }); }); return own.concat(rest); }
     function panelRender() {
       panel.textContent = ''; statusEl = null; if (readOnly) { panel.style.display = 'none'; return; } panel.style.display = 'block';
       const id = sel[0], vv = id ? parseVid(id) : null, d = id && !vv ? P.describe(geometry, id) : null;
@@ -150,6 +156,7 @@
         vals.name.style.width = '150px'; act(f, 'Создать', 'create-room', () => { const b = bounds(), pos = b ? {x: b.x1 + 1, y: b.y0, rot: 0} : undefined, o = {name: vals.name.value.trim() || undefined, w: num(vals.w.value), h: num(vals.h.value), pos};
           if (kind.value === 'L') { o.cutW = num(vals.cutW.value); o.cutH = num(vals.cutH.value); } const r = edit(kind.value === 'L' ? 'addRoomL' : 'addRoomRect', o); if (r.ok) { addOpen = false; panelRender(); } });
         act(f, 'Отмена', 'cancel', () => { addOpen = false; panelRender(); }); }
+      else if (mode && mode.kind === 'attach') { const f = sect('Привязка проёма'); f.appendChild(H('div', '', 'Нажмите на стену на плане: проём встанет в эту точку.')); act(f, 'Отмена', 'cancel', () => { mode = null; panelRender(); render(); }); }
       else if (mode) { const f = sect('Перегородка'); f.appendChild(H('div', '', mode.pts.length ? 'Укажите вторую точку на стене помещения (угол — точно в вершину).' : 'Укажите первую точку на стене помещения. Точная позиция: сначала «Разделить стену» числом, затем выберите углы.')); act(f, 'Отмена', 'cancel', () => { mode = null; panelRender(); render(); }); }
       else if (vv) { const r = drawing.rooms.find(x => x.id === vv.roomId); if (r && r.vertices && r.vertices[vv.index]) { const p = r.vertices[vv.index], f = sect('Угол ' + (vv.index + 1) + ' помещения «' + (r.src.name || r.id) + '»');
           row(f, 'x, м (в комнате)', show(p.x), 'vx', null, () => {}); row(f, 'y, м (в комнате)', show(p.y), 'vy', 'move-vertex', () => { const q = {x: num(panel.querySelector('[data-f=vx]').value), y: num(panel.querySelector('[data-f=vy]').value)}; if (q.x === null || q.y === null) throw new Error('Введите x и y'); edit('moveVertex', vv.roomId, vv.index, q); });
@@ -159,10 +166,23 @@
           const sw = row(f, 'Длина, м', show(w.src.len), 'len', 'set-len', v => edit('setWallLength', id, num(v), {anchor: panel.querySelector('[data-f=anchor]').value, mode: panel.querySelector('[data-f=mode]').value}));
           choose(f, 'Двигать:', 'anchor', [['start', 'конец стены (начало на месте)'], ['end', 'начало стены (конец на месте)']], 'start'); choose(f, 'Соседняя стена:', 'mode', [['push', 'сдвигается целиком (прямые углы сохраняются)'], ['end', 'остаётся, меняется только угол']], 'push');
           row(f, 'Толщина, м', show(w.src.thickness), 'thickness', 'set-thickness', v => edit('setWallProps', id, {thickness: num(v)})); row(f, 'Разделить на расстоянии, м', '', 'split-at', 'split', v => edit('splitWall', id, num(v)));
-          f.appendChild(H('div', 'opacity:.7', 'Пустое расстояние — разделить пополам.')); const n = r.vertices.length; act(f, 'Убрать угол в конце стены', 'remove-end', () => { edit('removeVertex', r.id, (i + 1) % n); }); act(f, 'Убрать угол в начале стены', 'remove-start', () => { edit('removeVertex', r.id, i); }); } }
+          f.appendChild(H('div', 'opacity:.7', 'Пустое расстояние — разделить пополам.')); const n = r.vertices.length; act(f, 'Убрать угол в конце стены', 'remove-end', () => { edit('removeVertex', r.id, (i + 1) % n); }); act(f, 'Убрать угол в начале стены', 'remove-start', () => { edit('removeVertex', r.id, i); });
+          const g2 = sect('Проём на этой стене'), q = k => panel.querySelector('[data-f=' + k + ']').value; choose(g2, 'Вид:', 'new-kind', [['дверь', 'дверь'], ['окно', 'окно'], ['проём', 'проём']], 'дверь');
+          row(g2, 'Ширина, м', '', 'new-w', null, () => {}); row(g2, 'Высота, м', '', 'new-h', null, () => {}); row(g2, 'Низ от пола, м', '', 'new-sill', null, () => {});
+          row(g2, 'От начала стены, м', '', 'new-at', 'add-opening', () => { edit('addOpening', id, {kind: q('new-kind'), w: num(q('new-w')), h: num(q('new-h')), sill: num(q('new-sill')), at: num(q('new-at'))}); }); g2.appendChild(H('div', 'opacity:.7', 'Пустое расстояние — по центру стены.')); } }
       else if (d && d.kind === 'room') { const r = geometry.rooms.find(x => x.id === id), f = sect(d.title); row(f, 'Название', unk(r.name) ? '' : r.name, 'name', 'set-name', v => edit('setRoomProps', id, {name: v})); row(f, 'Высота, м', show(r.height), 'height', 'set-height', v => edit('setRoomProps', id, {height: num(v)}));
         act(f, 'Перегородка…', 'partition', () => { mode = {kind: 'split', roomId: id, pts: []}; panelRender(); render(); }); act(f, 'Удалить помещение', 'remove-room', () => { edit('removeRoom', id); }); }
-      else if (d) sect(d.title).appendChild(H('div', 'opacity:.7', 'Правка проёмов и предметов — в следующих срезах.'));
+      else if (d && d.kind === 'opening') { const o = geometry.openings.find(x => x.id === id), f = sect(d.title), att = !!o.wallId; f.appendChild(H('div', 'opacity:.7', 'Стена: ' + d.rows[0][1]));
+        row(f, 'Вид', unk(o.kind) ? '' : o.kind, 'okind', 'set-okind', v => edit('setOpeningProps', id, {kind: v})); row(f, 'Ширина, м', show(o.w), 'ow', 'set-ow', v => edit('setOpeningProps', id, {w: num(v)}));
+        row(f, 'Высота, м', show(o.h), 'oh', 'set-oh', v => edit('setOpeningProps', id, {h: num(v)})); row(f, 'Низ от пола, м', show(o.sill), 'osill', 'set-osill', v => edit('setOpeningProps', id, {sill: num(v)}));
+        if (att) row(f, 'От начала стены, м', show(o.at), 'oat', 'set-oat', v => edit('moveOpening', id, num(v)));
+        const sw = choose(f, 'Открывание:', 'oswing', [['', 'не задано'], ['in', 'внутрь'], ['out', 'наружу'], ['sliding', 'раздвижное']], unk(o.swing) ? '' : o.swing); sw.addEventListener('change', () => run(() => edit('setOpeningProps', id, {swing: sw.value || null})));
+        if (att) { f.appendChild(H('div', 'opacity:.7', 'Двигать вдоль стены: потяните красную точку на плане или введите расстояние.')); act(f, 'Отвязать от стены', 'detach-opening', () => { edit('detachOpening', id); }); }
+        else { const g2 = sect('Привязать к стене'), opts = wallOpts(o); if (!opts.length) g2.appendChild(H('div', 'opacity:.7', 'Нет стен с известной формой: привязать некуда.'));
+          else { choose(g2, 'Стена:', 'attach-wall', opts, opts[0][0]); row(g2, 'От начала стены, м', '', 'attach-at', 'attach', v => edit('attachOpening', id, panel.querySelector('[data-f=attach-wall]').value, num(v)));
+            act(g2, 'Указать стену на плане', 'attach-pick', () => { mode = {kind: 'attach', openingId: id}; panelRender(); render(); }); g2.appendChild(H('div', 'opacity:.7', 'Пустое расстояние — по центру стены (если известна ширина проёма).')); } }
+        act(f, 'Удалить проём', 'remove-opening', () => { edit('removeOpening', id); }); }
+      else if (d) sect(d.title).appendChild(H('div', 'opacity:.7', 'Правка предметов — в следующих срезах.'));
       else sect().appendChild(H('div', 'opacity:.7', 'Выберите помещение, стену или угол. Углы двигаются перетаскиванием.'));
       statusEl = H('div', 'margin-top:4px;min-height:1em'); statusEl.setAttribute('role', 'status'); statusEl.setAttribute('aria-live', 'polite'); panel.appendChild(statusEl); setMsg(msg.text, msg.level);
     }
@@ -171,17 +191,26 @@
     const ptr = new Map(); let down = null, pinch = null;
     const local = e => { const r = wrap.getBoundingClientRect ? wrap.getBoundingClientRect() : {left: 0, top: 0}; return [e.clientX - (r.left || 0), e.clientY - (r.top || 0)]; };
     svg.addEventListener('pointerdown', e => { const p = local(e); ptr.set(e.pointerId, p);
-      if (ptr.size === 1) { const tg = e.target && e.target.closest ? e.target : null, t = tg ? tg.closest('[data-id],[data-vid]') : null, v = t && !readOnly && !mode ? parseVid(t.getAttribute('data-vid')) : null;
-        down = {x: p[0], y: p[1], id: t ? (t.getAttribute('data-vid') || t.getAttribute('data-id')) : null, moved: false, tx: view.tx, ty: view.ty, vertex: v}; }
+      if (ptr.size === 1) { const tg = e.target && e.target.closest ? e.target : null, t = tg ? tg.closest('[data-id],[data-vid],[data-oid]') : null, v = t && !readOnly && !mode ? parseVid(t.getAttribute('data-vid')) : null;
+        down = {x: p[0], y: p[1], id: t ? (t.getAttribute('data-vid') || t.getAttribute('data-id')) : null, moved: false, tx: view.tx, ty: view.ty, vertex: v, open: t && !readOnly && !mode ? t.getAttribute('data-oid') : null}; }
       else { down = null; preview = null; const [a, b] = [...ptr.values()]; pinch = {d: Math.hypot(a[0] - b[0], a[1] - b[1]) || 1}; }
       try { svg.setPointerCapture(e.pointerId); } catch (_) {} });
     function dragVertex(p) { const room = drawing.rooms.find(x => x.id === down.vertex.roomId); if (!room) return;
       const sn = P.snapPoint(drawing, unproject(p), {grid, tol: 10 / view.k, skip: {roomId: room.id, index: down.vertex.index}}), lp = P.toLocal(room, sn);
       try { preview = P.ops.moveVertex(drawing, room.id, down.vertex.index, lp); setMsg('', ''); } catch (err) { setMsg(err.message, 'error'); } schedule(); }
+    function dragOpening(p) { const o = drawing.openings.find(x => x.id === down.open), w = o && drawing.walls.find(x => x.id === o.src.wallId), r = w && w.a && drawing.rooms.find(x => x.id === w.roomId); if (!r) return;
+      const q = P.toLocal(r, unproject(p)), L = Math.hypot(w.b.x - w.a.x, w.b.y - w.a.y), sPos = ((q.x - w.a.x) * (w.b.x - w.a.x) + (q.y - w.a.y) * (w.b.y - w.a.y)) / L, ow = unk(o.src.w) ? 0 : +o.src.w;
+      let at = sPos - ow / 2; if (grid) at = Math.round(at / grid) * grid; at = Math.max(0, Math.min(L - ow, at));
+      try { preview = P.ops.moveOpening(drawing, o.id, at); setMsg('', ''); } catch (err) { setMsg(err.message, 'error'); } schedule(); }
     svg.addEventListener('pointermove', e => { if (!ptr.has(e.pointerId)) return; const p = local(e); ptr.set(e.pointerId, p);
       if (ptr.size === 2 && pinch) { const [a, b] = [...ptr.values()], d = Math.hypot(a[0] - b[0], a[1] - b[1]) || 1; zoomAt(d / pinch.d, (a[0] + b[0]) / 2, (a[1] + b[1]) / 2); pinch.d = d; }
-      else if (down) { const dx = p[0] - down.x, dy = p[1] - down.y; if (down.moved || Math.hypot(dx, dy) > 4) { down.moved = true; if (down.vertex) dragVertex(p); else { view.tx = down.tx + dx; view.ty = down.ty + dy; schedule(); } } } });
+      else if (down) { const dx = p[0] - down.x, dy = p[1] - down.y; if (down.moved || Math.hypot(dx, dy) > 4) { down.moved = true; if (down.vertex) dragVertex(p); else if (down.open) dragOpening(p); else { view.tx = down.tx + dx; view.ty = down.ty + dy; schedule(); } } } });
     function modeClick(p) {
+      if (mode.kind === 'attach') { const o = drawing.openings.find(x => x.id === mode.openingId), wp = unproject(p); let best = null;
+        for (const r of drawing.rooms) { const q = P.nearestOnContour(drawing, r.id, P.toLocal(r, wp), 0); if (q && (!best || q.dist < best.dist)) best = q; }
+        if (!o || !best || best.dist * view.k > 16) { setMsg('Укажите точку на стене помещения', 'error'); return; }
+        const w = drawing.walls.find(x => x.id === best.wallId), L = Math.hypot(w.b.x - w.a.x, w.b.y - w.a.y), ow = unk(o.src.w) ? 0 : +o.src.w; let at = best.at - ow / 2; if (grid) at = Math.round(at / grid) * grid; at = Math.max(0, Math.min(L - ow, at));
+        mode = null; const r = edit('attachOpening', o.id, best.wallId, at); if (!r.ok) { panelRender(); render(); } return; }
       const room = drawing.rooms.find(x => x.id === mode.roomId); if (!room) { mode = null; panelRender(); return; }
       const q = P.nearestOnContour(drawing, room.id, P.toLocal(room, unproject(p)), 10 / view.k); if (!q || q.dist * view.k > 16) { setMsg('Укажите точку на стене помещения', 'error'); return; }
       if (grid && q.vertex === null) { const i = room.src.wallIds.indexOf(q.wallId), a = room.vertices[i], b = room.vertices[(i + 1) % room.vertices.length], L = Math.hypot(b.x - a.x, b.y - a.y), at = Math.min(L, Math.max(0, Math.round(q.at / grid) * grid));
@@ -190,12 +219,13 @@
       const m = mode; mode = null; const r = edit('splitRoom', m.roomId, m.pts[0], m.pts[1]); if (!r.ok) { panelRender(); render(); } }
     const up = e => { if (!ptr.has(e.pointerId)) return; ptr.delete(e.pointerId);
       if (down && e.type === 'pointerup') {
-        if (down.vertex && down.moved) { if (preview) commit(preview, 'moveVertex'); else { render(); } }
+        if ((down.vertex || down.open) && down.moved) { if (preview) commit(preview, down.open ? 'moveOpening' : 'moveVertex'); else { render(); } }
         else if (!down.moved) { const p = local(e);
           if (mode) modeClick(p);
+          else if (down.open) { /* тап по ручке проёма: выбор не меняем */ }
           else if (down.id) { const id = down.id; setSel(e.shiftKey ? (isSel(id) ? sel.filter(x => x !== id) : sel.concat(id)) : [id], true); }
           else if (sel.length) setSel([], true); } }
-      else if (down && down.vertex) { preview = null; render(); }
+      else if (down && (down.vertex || down.open)) { preview = null; render(); }
       if (ptr.size < 2) pinch = null; if (ptr.size === 0) down = null; };
     svg.addEventListener('pointerup', up); svg.addEventListener('pointercancel', up);
     svg.addEventListener('wheel', e => { e.preventDefault(); const p = local(e); zoomAt(Math.exp(-e.deltaY * 0.0015), p[0], p[1]); }, {passive: false});
