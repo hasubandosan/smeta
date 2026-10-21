@@ -489,6 +489,28 @@
     return out;
   }
 
+  // ===== Файл: импорт/экспорт геометрии JSON (срез 7). Формат файла — геометрия контракта {walls, openings, rooms, fixtures}
+  const GEO_KEYS = ['walls', 'openings', 'rooms', 'fixtures'];
+  function exportJSON(geometry) {
+    const g = clone(geometry) || {}, v = SM.geo.validate(g); if (!v.ok) { const e = v.issues.find(x => x.level === 'error'); throw new Error('Геометрия не проходит проверку, сохранять нельзя: ' + (e ? e.text : 'ошибка')); }
+    const out = {}; for (const k of GEO_KEYS) if (k in g) out[k] = g[k]; return JSON.stringify(out, null, 2);
+  }
+  // Разобрать и проверить текст файла. -> {ok, geometry, issues, dropped, summary, message}. Принимает и обёртки {geometry: …}, {object: {geometry: …}}; чужие ключи верхнего уровня отбрасываются; принимается только то, что прошло SM.geo.validate (P26)
+  function importJSON(text) {
+    const fail = (message, issues) => ({ok: false, message, issues: issues || []}), isObj = x => x && typeof x === 'object' && !Array.isArray(x);
+    if (typeof text !== 'string') return fail('Файл не прочитан');
+    let obj; try { obj = JSON.parse(text.replace(/^\uFEFF/, '')); } catch (e) { return fail('Файл не похож на JSON: ' + e.message); }
+    if (isObj(obj) && !GEO_KEYS.some(k => k in obj)) { if (isObj(obj.geometry)) obj = obj.geometry; else if (isObj(obj.object) && isObj(obj.object.geometry)) obj = obj.object.geometry; }
+    if (!isObj(obj)) return fail('В файле нет геометрии: ожидается объект со списками walls и rooms');
+    const bad = GEO_KEYS.find(k => k in obj && !(Array.isArray(obj[k]) && obj[k].every(isObj))); if (bad) return fail('Поле «' + bad + '» должно быть списком записей');
+    if (!Array.isArray(obj.walls) && !Array.isArray(obj.rooms)) return fail('В файле нет геометрии: нужны списки walls и rooms');
+    const g = {walls: [], openings: [], rooms: []}; for (const k of GEO_KEYS) if (k in obj) g[k] = clone(obj[k]); const dropped = Object.keys(obj).filter(k => GEO_KEYS.indexOf(k) < 0);
+    const v = SM.geo.validate(g); if (!v.ok) { const errs = v.issues.filter(x => x.level === 'error'); return fail('Файл не принят, в геометрии есть ошибки (' + errs.length + '): ' + errs.slice(0, 3).map(x => x.text).join('; ') + (errs.length > 3 ? '…' : ''), v.issues); }
+    try { toGeometry(fromGeometry(g), g); } catch (e) { return fail('Геометрию из файла нельзя прочитать: ' + e.message, v.issues); }
+    const warns = v.issues.filter(x => x.level === 'warn').length, summary = {rooms: g.rooms.length, walls: g.walls.length, openings: g.openings.length, fixtures: (g.fixtures || []).length};
+    return {ok: true, geometry: g, issues: v.issues, dropped, summary, message: 'Импортировано: помещений ' + summary.rooms + ', стен ' + summary.walls + ', проёмов ' + summary.openings + ', предметов ' + summary.fixtures + (warns ? '. Предупреждений: ' + warns : '') + (dropped.length ? '. Лишние поля файла отброшены: ' + dropped.join(', ') : '')};
+  }
+
   // Отмена/повтор: снимки геометрии, без ограничения глубины. История в проект не попадает
   function createHistory(geometry) {
     const past = [], future = []; let cur = {g: clone(geometry), reason: 'start'};
@@ -501,8 +523,8 @@
     };
   }
 
-  SM.planner = Object.assign(SM.planner || {}, {VERSION: '0.6.0', CONTRACT: 1,
-    fromGeometry, toGeometry, moveVertex, snapPoint, toWorld, toLocal, finish, measure, describe, createHistory, vertexAngle, nearestOnContour, snapRoomMove, findSharedWalls, snapFixture, fixtureIssues, roomAt, FIXTURE_KINDS,
+  SM.planner = Object.assign(SM.planner || {}, {VERSION: '0.7.0', CONTRACT: 1,
+    fromGeometry, toGeometry, moveVertex, snapPoint, toWorld, toLocal, finish, measure, describe, createHistory, vertexAngle, nearestOnContour, snapRoomMove, findSharedWalls, snapFixture, fixtureIssues, roomAt, FIXTURE_KINDS, exportJSON, importJSON,
     ops: {moveVertex, setWallLength, setVertexAngle, splitWall, removeVertex, setWallProps, setRoomProps, addRoomFromPoints, addRoomRect, addRoomL, removeRoom, splitRoom, addOpening, moveOpening, setOpeningProps, attachOpening, detachOpening, removeOpening, moveRoom, rotateRoom, linkWalls, unlinkWall, alignRoomToWall, addFixture, setFixtureProps, moveFixture, removeFixture}});
 })(typeof window !== 'undefined' ? window : globalThis);
 if (typeof module !== 'undefined') module.exports = (typeof window !== 'undefined' ? window : globalThis).SM;

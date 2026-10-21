@@ -1,4 +1,4 @@
-/* CAD-планировщик, интерфейс (SVG). Срез 2: просмотр. Срез 3: правка стен; срез 4: проёмы; срез 5: несколько помещений (перенос, поворот, общие стены); срез 6: предметы — вершины мышью/пальцем, длина и угол числом, разделение стены, убрать угол, новые комнаты, перегородка, отмена/повтор.
+/* CAD-планировщик, интерфейс (SVG). Срез 2: просмотр. Срез 3: правка стен; срез 4: проёмы; срез 5: несколько помещений (перенос, поворот, общие стены); срез 6: предметы; срез 7: файл (SVG, PNG, печать, JSON) — вершины мышью/пальцем, длина и угол числом, разделение стены, убрать угол, новые комнаты, перегородка, отмена/повтор.
    Ничего не хранит и не обращается к localStorage/fetch; всё получает через opts (docs/CAD_CONTRACT.md, раздел 5). Мышь и касание (pointer events). */
 (function (root) {
   'use strict';
@@ -13,7 +13,7 @@
     '.pl-open{stroke-linecap:butt;fill:none;stroke:var(--pl-open,#7a8594)}.pl-open.door{stroke:var(--pl-door,#a0642a)}.pl-open.win{stroke:var(--pl-win,#2a7fc7)}' +
     '.pl-fix{fill:var(--pl-fix,#fff);stroke:var(--pl-fixl,#5a6472);stroke-width:1.5;cursor:pointer}.pl-sel{stroke:var(--pl-sel,#e0301e)!important;stroke-width:3.5!important}.pl-room.pl-sel{fill:var(--pl-roomsel,#fde9e6)}' +
     '.pl-vtx{fill:var(--pl-vtxfill,#fff);stroke:var(--pl-sel,#e0301e);stroke-width:2;cursor:move}.pl-vtx.pl-sel{fill:var(--pl-sel,#e0301e)}.pl-mark{fill:var(--pl-sel,#e0301e);stroke:none;pointer-events:none}' +
-    '.pl-txt{fill:var(--pl-text,#1f2630);font:12px system-ui,sans-serif;pointer-events:none}.pl-dim{fill:var(--pl-dim,#4a5563);font:11px system-ui,sans-serif;pointer-events:none}.pl-note{fill:var(--pl-dim,#4a5563);font:11px system-ui,sans-serif}.pl-mv{fill:var(--pl-vtxfill,#fff);fill-opacity:.75;stroke:var(--pl-sel,#e0301e);stroke-width:2;cursor:move}.pl-wall.shared{stroke:var(--pl-shared,#2a7fc7)}.pl-fix.warn{stroke:var(--pl-warn,#c77700);stroke-dasharray:5 3}.pl-rot{fill:var(--pl-sel,#e0301e);stroke:#fff;stroke-width:1.5;cursor:grab}.pl-axis{stroke:var(--pl-sel,#e0301e);stroke-width:1.2;pointer-events:none}.pl-swing{fill:none;stroke:var(--pl-open,#7a8594);stroke-width:1;pointer-events:none}';
+    '.pl-txt{fill:var(--pl-text,#1f2630);font:12px system-ui,sans-serif;pointer-events:none}.pl-dim{fill:var(--pl-dim,#4a5563);font:11px system-ui,sans-serif;pointer-events:none}.pl-note{fill:var(--pl-dim,#4a5563);font:11px system-ui,sans-serif}.pl-mv{fill:var(--pl-vtxfill,#fff);fill-opacity:.75;stroke:var(--pl-sel,#e0301e);stroke-width:2;cursor:move}.pl-wall.shared{stroke:var(--pl-shared,#2a7fc7)}.pl-fix.warn{stroke:var(--pl-warn,#c77700);stroke-dasharray:5 3}.pl-rot{fill:var(--pl-sel,#e0301e);stroke:#fff;stroke-width:1.5;cursor:grab}.pl-rax{stroke:var(--pl-sel,#e0301e);stroke-width:1.2;pointer-events:none}.pl-swing{fill:none;stroke:var(--pl-open,#7a8594);stroke-width:1;pointer-events:none}';
   const kindClass = k => /дверь|door/i.test(k || '') ? 'door' : /окно|window/i.test(k || '') ? 'win' : '';
 
   P.mount = function (el, opts) {
@@ -26,10 +26,11 @@
     wrap.appendChild(svg); wrap.appendChild(bar); el.appendChild(wrap);
 
     let geometry = clone(opts.geometry) || {walls: [], openings: [], rooms: []}, drawing, readOnly = opts.readOnly !== false, sel = [], view = {k: 50, tx: 0, ty: 0}, fitted = false, scheduled = false, dead = false;
-    let history = P.createHistory(geometry), preview = null, suggest = null, grid = unk(opts.grid) || !(+opts.grid > 0) ? null : +opts.grid, mode = null, addOpen = false, addFix = false, settings = {gap: opts.settings && !unk(opts.settings.gap) && +opts.settings.gap > 0 ? +opts.settings.gap : null}, msg = {text: '', level: ''}, created = null;
+    let history = P.createHistory(geometry), preview = null, suggest = null, grid = unk(opts.grid) || !(+opts.grid > 0) ? null : +opts.grid, mode = null, addOpen = false, addFix = false, addFile = false, settings = {gap: opts.settings && !unk(opts.settings.gap) && +opts.settings.gap > 0 ? +opts.settings.gap : null}, msg = {text: '', level: ''}, created = null;
     const D = () => preview || drawing, vid = (r, i) => 'v:' + r + ':' + i, parseVid = id => { if (typeof id !== 'string' || id.slice(0, 2) !== 'v:') return null; const k = id.lastIndexOf(':'); return {roomId: id.slice(2, k), index: +id.slice(k + 1)}; };
     const validSel = id => { const v = parseVid(id); if (v) { const r = drawing.rooms.find(x => x.id === v.roomId); return !!(r && r.vertices && v.index < r.vertices.length); } return !!P.describe(geometry, id); };
-    const size = () => { const r = wrap.getBoundingClientRect ? wrap.getBoundingClientRect() : {}; return {w: r.width || wrap.clientWidth || 800, h: r.height || wrap.clientHeight || 600}; };
+    let exportSize = null;   // при экспорте рисунок строится в своём размере (P27)
+    const size = () => { if (exportSize) return exportSize; const r = wrap.getBoundingClientRect ? wrap.getBoundingClientRect() : {}; return {w: r.width || wrap.clientWidth || 800, h: r.height || wrap.clientHeight || 600}; };
     const raf = root.requestAnimationFrame ? f => root.requestAnimationFrame(f) : f => f();
     const worldPts = r => r.vertices.map(v => P.toWorld(r, v));
 
@@ -100,7 +101,7 @@
           r.vertices.forEach((v, i) => { const c = S(P.toWorld(r, v)), id = vid(r.id, i); mk('circle', {class: 'pl-vtx' + (isSel(id) ? ' pl-sel' : ''), cx: c[0], cy: c[1], r: 8, 'data-vid': id, 'data-kind': 'vertex'}, svg); }); }
         for (const f of drawing.fixtures) if (isSel(f.id) && !unk(f.src.x) && !unk(f.src.y)) { const r = roomOf.get(f.src.roomId); if (!r) continue;
           const c = S(P.toWorld(r, {x: +f.src.x, y: +f.src.y})), wa = ((+f.src.rot || 0) + ((r.src.pos || {}).rot || 0)) * Math.PI / 180, dp = Math.max(28, (unk(f.src.w) ? 0 : f.src.w * k / 2) + 18), hx = c[0] + Math.cos(wa) * dp, hy = c[1] - Math.sin(wa) * dp;
-          mk('line', {class: 'pl-axis', x1: c[0], y1: c[1], x2: hx, y2: hy}, svg); mk('circle', {class: 'pl-mv', cx: c[0], cy: c[1], r: 8, 'data-fid': f.id, 'data-kind': 'fh'}, svg); mk('circle', {class: 'pl-rot', cx: hx, cy: hy, r: 8, 'data-frot': f.id, 'data-kind': 'fr'}, svg); }
+          mk('line', {class: 'pl-rax', x1: c[0], y1: c[1], x2: hx, y2: hy}, svg); mk('circle', {class: 'pl-mv', cx: c[0], cy: c[1], r: 8, 'data-fid': f.id, 'data-kind': 'fh'}, svg); mk('circle', {class: 'pl-rot', cx: hx, cy: hy, r: 8, 'data-frot': f.id, 'data-kind': 'fr'}, svg); }
         for (const r of drawing.rooms) if (isSel(r.id) && r.vertices && r.closed) { const pts = worldPts(r), c = S({x: pts.reduce((a, p) => a + p.x, 0) / pts.length, y: pts.reduce((a, p) => a + p.y, 0) / pts.length}); mk('circle', {class: 'pl-mv', cx: c[0], cy: c[1], r: 11, 'data-rid': r.id, 'data-kind': 'rh'}, svg); }
         for (const o of drawing.openings) if (isSel(o.id) && o.p1) { const r = wallRoom.get(o.src.wallId); if (!r) continue; const c = S(P.toWorld(r, {x: (o.p1.x + o.p2.x) / 2, y: (o.p1.y + o.p2.y) / 2})); mk('circle', {class: 'pl-vtx pl-sel', cx: c[0], cy: c[1], r: 8, 'data-oid': o.id, 'data-kind': 'oh'}, svg); } }
       if (mode) { const r = drawing.rooms.find(x => x.id === mode.roomId); if (r) mode.pts.forEach(q => { const c = S(P.toWorld(r, q)); mk('circle', {class: 'pl-mark', cx: c[0], cy: c[1], r: 6}, svg); }); }
@@ -140,7 +141,7 @@
     const tool = H('div', 'position:absolute;left:8px;top:8px;display:flex;gap:6px'), panel = H('div', 'position:absolute;left:8px;right:56px;bottom:8px;max-height:45%;overflow:auto;padding:8px;background:Canvas;color:CanvasText;border:1px solid #8886;border-radius:6px;font:13px system-ui,sans-serif;touch-action:auto;user-select:text');
     let statusEl = null; wrap.tabIndex = 0; wrap.style.outline = 'none'; wrap.appendChild(tool); wrap.appendChild(panel);
     const tbtn = (txt, title, key, f) => { const b = H('button', 'min-width:38px;height:38px;font-size:17px;cursor:pointer', txt); b.type = 'button'; b.title = title; b.setAttribute('aria-label', title); b.setAttribute('data-act', key); b.addEventListener('click', f); tool.appendChild(b); return b; };
-    const bUndo = tbtn('↶', 'Отменить', 'undo', () => { undo(); }), bRedo = tbtn('↷', 'Повторить', 'redo', () => { redo(); }), bAdd = tbtn('＋ Комната', 'Новая комната', 'add-room', () => { addOpen = !addOpen; addFix = false; mode = null; panelRender(); }), bFix = tbtn('＋ Предмет', 'Новый предмет (сантехника, мебель)', 'add-fixture', () => { addFix = !addFix; addOpen = false; mode = null; panelRender(); });
+    const bUndo = tbtn('↶', 'Отменить', 'undo', () => { undo(); }), bRedo = tbtn('↷', 'Повторить', 'redo', () => { redo(); }), bAdd = tbtn('＋ Комната', 'Новая комната', 'add-room', () => { addOpen = !addOpen; addFix = false; addFile = false; mode = null; panelRender(); }), bFix = tbtn('＋ Предмет', 'Новый предмет (сантехника, мебель)', 'add-fixture', () => { addFix = !addFix; addOpen = false; addFile = false; mode = null; panelRender(); }), bFile = tbtn('⤓ Файл', 'Экспорт чертежа (SVG, PNG, печать) и JSON, импорт', 'file', () => { addFile = !addFile; addOpen = false; addFix = false; mode = null; panelRender(); });
     function chrome() { tool.style.display = readOnly ? 'none' : 'flex'; bUndo.disabled = !history.canUndo(); bRedo.disabled = !history.canRedo(); }
     const num = v => { v = String(v).trim().replace(',', '.'); if (v === '') return null; const x = Number(v); if (!isFinite(x)) throw new Error('Введите число, например 3,5'); return x; };
     const show = v => unk(v) ? '' : String(Math.round(+v * 1000) / 1000).replace('.', ',');
@@ -159,17 +160,26 @@
     function panelRender() {
       panel.textContent = ''; statusEl = null; if (readOnly) { panel.style.display = 'none'; return; } panel.style.display = 'block';
       const id = sel[0], vv = id ? parseVid(id) : null, d = id && !vv ? P.describe(geometry, id) : null;
-      if (addFix) { const f = sect('Новый предмет'), kinds = choose(f, 'Вид:', 'fx-kind', kindList(), kindList()[0][0]), vals = {};
+      if (addFile) { const f = sect('Файл: экспорт и импорт'), sc = choose(f, 'Масштаб на бумаге:', 'ex-scale', [['', 'по размеру листа'], ['20', '1:20'], ['50', '1:50'], ['100', '1:100'], ['200', '1:200']], ''), pxr = row(f, 'PNG: пикселей на метр', '100', 'ex-px', null, () => {});
+        const eo = () => ({scale: sc.value ? +sc.value : null, pxPerM: num(pxr.value) || 100}), fail = e => setMsg(e.message, 'error');
+        act(f, 'Скачать SVG', 'dl-svg', () => { saveBlob(new Blob([buildSVG(eo())], {type: 'image/svg+xml'}), fileBase() + '.svg'); setMsg('Файл SVG сохранён', ''); });
+        act(f, 'Скачать PNG', 'dl-png', () => { exportPNG(eo()).then(b => { saveBlob(b, fileBase() + '.png'); setMsg('Файл PNG сохранён', ''); }, fail); });
+        act(f, 'Печать', 'print-plan', () => { printPlan(eo()); }); f.appendChild(H('div', 'opacity:.7', 'На бумаге масштаб 1:N даёт настоящий размер: 1 м = 1000/N мм. Не поместилось — выберите мельче.'));
+        const g2 = sect('Геометрия (JSON)'); act(g2, 'Скачать геометрию', 'dl-json', () => { saveBlob(new Blob([P.exportJSON(geometry)], {type: 'application/json'}), fileBase() + '.json'); setMsg('Файл JSON сохранён', ''); });
+        const inp = H('input', 'margin:4px 0;max-width:100%'); inp.type = 'file'; inp.accept = '.json,application/json'; inp.setAttribute('data-f', 'import-file'); g2.appendChild(H('div', '', 'Загрузить из файла:')); g2.appendChild(inp);
+        inp.addEventListener('change', () => { const file = inp.files && inp.files[0]; if (!file) return; readText(file).then(txt => { importJSON(txt); }, fail); });
+        g2.appendChild(H('div', 'opacity:.7', 'Загрузка заменяет текущий чертёж целиком; после неё работает отмена ↶. Файл с ошибками геометрии не принимается.')); act(f, 'Закрыть', 'cancel', () => { addFile = false; panelRender(); }); }
+      else if (addFix) { const f = sect('Новый предмет'), kinds = choose(f, 'Вид:', 'fx-kind', kindList(), kindList()[0][0]), vals = {};
         [['name', 'Название (не обязательно)'], ['w', 'Ширина, м'], ['d', 'Глубина, м'], ['h', 'Высота, м (не обязательно)']].forEach(x => { vals[x[0]] = row(f, x[1], '', 'fx-' + x[0], null, () => {}); }); vals.name.style.width = '150px';
         f.appendChild(H('div', 'opacity:.7', 'Размеры не обязательны: без них на плане будет метка. Их вводит человек — программа габариты не подставляет.'));
         act(f, 'Поставить на плане', 'place-fixture', () => { const pr = {kind: kinds.value, name: vals.name.value.trim() || undefined, w: num(vals.w.value), d: num(vals.d.value), h: num(vals.h.value)};
-          mode = {kind: 'fixture', props: pr, title: 'Новый предмет', hint: 'Нажмите внутри помещения: предмет встанет центром в эту точку (у стены прилипнет). Потом его можно потянуть и повернуть.'}; addFix = false; panelRender(); render(); });
-        gapRow(f); act(f, 'Отмена', 'cancel', () => { addFix = false; panelRender(); }); }
+          mode = {kind: 'fixture', props: pr, title: 'Новый предмет', hint: 'Нажмите внутри помещения: предмет встанет центром в эту точку (у стены прилипнет). Потом его можно потянуть и повернуть.'}; addFix = false; addFile = false; panelRender(); render(); });
+        gapRow(f); act(f, 'Отмена', 'cancel', () => { addFix = false; addFile = false; panelRender(); }); }
       else if (addOpen) { const f = sect('Новая комната'), kind = choose(f, 'Форма:', 'kind', [['rect', 'Прямоугольная'], ['L', 'Г-образная (вырез в правом верхнем углу)']], 'rect'), vals = {};
         [['name', 'Название', ''], ['w', 'Ширина, м', ''], ['h', 'Глубина, м', ''], ['cutW', 'Вырез: ширина, м', ''], ['cutH', 'Вырез: глубина, м', '']].forEach(x => { vals[x[0]] = row(f, x[1], x[2], x[0], null, () => {}); });
         vals.name.style.width = '150px'; act(f, 'Создать', 'create-room', () => { const b = bounds(), pos = b ? {x: b.x1 + 1, y: b.y0, rot: 0} : undefined, o = {name: vals.name.value.trim() || undefined, w: num(vals.w.value), h: num(vals.h.value), pos};
-          if (kind.value === 'L') { o.cutW = num(vals.cutW.value); o.cutH = num(vals.cutH.value); } const r = edit(kind.value === 'L' ? 'addRoomL' : 'addRoomRect', o); if (r.ok) { addOpen = false; addFix = false; panelRender(); } });
-        act(f, 'Отмена', 'cancel', () => { addOpen = false; addFix = false; panelRender(); }); }
+          if (kind.value === 'L') { o.cutW = num(vals.cutW.value); o.cutH = num(vals.cutH.value); } const r = edit(kind.value === 'L' ? 'addRoomL' : 'addRoomRect', o); if (r.ok) { addOpen = false; addFix = false; addFile = false; panelRender(); } });
+        act(f, 'Отмена', 'cancel', () => { addOpen = false; addFix = false; addFile = false; panelRender(); }); }
       else if (mode && mode.kind !== 'split') { const f = sect(mode.title); f.appendChild(H('div', '', mode.hint)); act(f, 'Отмена', 'cancel', () => { mode = null; panelRender(); render(); }); }
       else if (mode) { const f = sect('Перегородка'); f.appendChild(H('div', '', mode.pts.length ? 'Укажите вторую точку на стене помещения (угол — точно в вершину).' : 'Укажите первую точку на стене помещения. Точная позиция: сначала «Разделить стену» числом, затем выберите углы.')); act(f, 'Отмена', 'cancel', () => { mode = null; panelRender(); render(); }); }
       else if (vv) { const r = drawing.rooms.find(x => x.id === vv.roomId); if (r && r.vertices && r.vertices[vv.index]) { const p = r.vertices[vv.index], f = sect('Угол ' + (vv.index + 1) + ' помещения «' + (r.src.name || r.id) + '»');
@@ -289,7 +299,7 @@
     svg.addEventListener('pointerup', up); svg.addEventListener('pointercancel', up);
     svg.addEventListener('wheel', e => { e.preventDefault(); const p = local(e); zoomAt(Math.exp(-e.deltaY * 0.0015), p[0], p[1]); }, {passive: false});
     wrap.addEventListener('keydown', e => { if (readOnly) return; const typing = e.target && /^(INPUT|SELECT|TEXTAREA)$/.test(e.target.tagName);
-      if (e.key === 'Escape') { if (mode || addOpen || addFix || preview) { mode = null; addOpen = false; addFix = false; preview = null; setMsg('', ''); panelRender(); render(); } return; }
+      if (e.key === 'Escape') { if (mode || addOpen || addFix || addFile || preview) { mode = null; addOpen = false; addFix = false; addFile = false; preview = null; setMsg('', ''); panelRender(); render(); } return; }
       if (typing || !(e.ctrlKey || e.metaKey)) return; const k = (e.key || '').toLowerCase();
       if (k === 'z' && !e.shiftKey) { e.preventDefault(); undo(); } else if (k === 'y' || (k === 'z' && e.shiftKey)) { e.preventDefault(); redo(); } });
 
@@ -297,18 +307,54 @@
     btn('+', 'Приблизить', () => { const c = center(); zoomAt(1.4, c[0], c[1]); });
     btn('−', 'Отдалить', () => { const c = center(); zoomAt(1 / 1.4, c[0], c[1]); });
     btn('⤢', 'Показать всё', fitAll);
+    // ===== Файл (срез 7): отдельная отрисовка для экспорта, скачивание, печать, импорт
+    const fileBase = () => String(opts.fileName || 'plan'), win = () => doc.defaultView || window;
+    function saveBlob(blob, name) { const u = win().URL.createObjectURL(blob), a = doc.createElement('a'); a.href = u; a.download = name; a.style.display = 'none'; doc.body.appendChild(a); a.click(); doc.body.removeChild(a); setTimeout(() => win().URL.revokeObjectURL(u), 1000); }
+    function readText(file) { return file.text ? file.text() : new Promise((ok, no) => { const r = new (win().FileReader)(); r.onload = () => ok(String(r.result)); r.onerror = () => no(new Error('Файл не прочитан')); r.readAsText(file); }); }
+    // SVG-текст всего чертежа: без сетки, осей, ручек, выделения и зон нажатия; k — пикселей на метр (по умолчанию 100); scale — масштаб на бумаге 1:N (физический размер в мм)
+    function buildSVG(o) {
+      o = o || {}; const b = bounds(); if (!b) throw new Error('На плане пока нечего экспортировать');
+      const k = o.k > 0 ? +o.k : o.pxPerM > 0 ? +o.pxPerM : 100, pad = 24, cap = o.scale > 0 ? 20 : 0, W = Math.round(((b.x1 - b.x0) * k + 2 * pad) * 100) / 100, H0 = Math.round(((b.y1 - b.y0) * k + 2 * pad + cap) * 100) / 100;
+      const keep = {view: Object.assign({}, view), sel, readOnly, mode, preview}; let out;
+      try { view = {k, tx: pad - b.x0 * k, ty: pad + b.y1 * k}; sel = []; readOnly = true; mode = null; preview = null; exportSize = {w: W, h: H0}; render();
+        const c = svg.cloneNode(true); c.querySelectorAll('.pl-grid,.pl-axis,.pl-note,.pl-hit').forEach(e => e.parentNode.removeChild(e)); c.querySelectorAll('.warn').forEach(e => e.setAttribute('class', e.getAttribute('class').replace(' warn', ''))); const bg = c.querySelector('.pl-bg'); if (bg) bg.setAttribute('style', 'fill:#fff');
+        c.setAttribute('viewBox', '0 0 ' + W + ' ' + H0); c.removeAttribute('role'); c.removeAttribute('style');
+        if (o.scale > 0) { const t = doc.createElementNS(NS, 'text'); t.setAttribute('class', 'pl-note'); t.setAttribute('x', 8); t.setAttribute('y', H0 - 8); t.textContent = 'Масштаб 1:' + o.scale; c.appendChild(t); c.setAttribute('width', Math.round(W / k * 1000 / o.scale * 100) / 100 + 'mm'); c.setAttribute('height', Math.round(H0 / k * 1000 / o.scale * 100) / 100 + 'mm'); }
+        else { c.setAttribute('width', W); c.setAttribute('height', H0); }
+        out = '<?xml version="1.0" encoding="UTF-8"?>\n' + new (win().XMLSerializer)().serializeToString(c); }
+      finally { view = keep.view; sel = keep.sel; readOnly = keep.readOnly; mode = keep.mode; preview = keep.preview; exportSize = null; render(); }
+      return out;
+    }
+    function exportPNG(o) {
+      return new Promise((ok, no) => { o = o || {}; const px = o.pxPerM > 0 ? +o.pxPerM : 100, b = bounds(); if (!b) return no(new Error('На плане пока нечего экспортировать'));
+        const W = Math.round((b.x1 - b.x0) * px + 48), Hh = Math.round((b.y1 - b.y0) * px + 48); if (W > 16000 || Hh > 16000) return no(new Error('PNG слишком большой (' + W + '×' + Hh + ' px): уменьшите число пикселей на метр'));
+        let txt; try { txt = buildSVG({k: px}); } catch (e) { return no(e); } const img = new (win().Image)(); img.onload = () => { try { const cv = doc.createElement('canvas'); cv.width = W; cv.height = Hh; const cx = cv.getContext && cv.getContext('2d'); if (!cx) return no(new Error('Этот браузер не умеет сохранять PNG: скачайте SVG'));
+          cx.fillStyle = '#fff'; cx.fillRect(0, 0, W, Hh); cx.drawImage(img, 0, 0, W, Hh); cv.toBlob(bl => bl ? ok(bl) : no(new Error('PNG не получился: скачайте SVG')), 'image/png'); } catch (e) { no(new Error('PNG не получился: ' + e.message)); } };
+        img.onerror = () => no(new Error('PNG не получился: скачайте SVG')); img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(txt); });
+    }
+    function printPlan(o) {
+      const txt = buildSVG(o), w = win().open('', '_blank'); if (!w) throw new Error('Браузер заблокировал окно печати: разрешите всплывающие окна или скачайте SVG');
+      w.document.open(); w.document.write('<!doctype html><meta charset="utf-8"><title>План</title><style>@page{margin:10mm}html,body{margin:0}' + (o && o.scale > 0 ? '' : 'svg{max-width:100%;height:auto}') + '</style>' + txt.replace(/^<\?xml[^>]*>\s*/, '')); w.document.close(); w.focus(); setTimeout(() => { try { w.print(); } catch (e) { /* окно закрыто */ } }, 200);
+    }
+    function importJSON(text) {
+      if (readOnly) return {ok: false, message: 'Режим просмотра: импорт отключён'}; const r = P.importJSON(text); if (!r.ok) { setMsg(r.message, 'error'); panelRender(); return r; }
+      geometry = r.geometry; history.push(geometry, 'importJSON'); drawing = P.fromGeometry(geometry); preview = null; suggest = null; sel = []; mode = null; created = null; addFile = false;
+      if (typeof opts.onChange === 'function') opts.onChange(clone(geometry), {reason: 'importJSON'}); if (typeof opts.onIssues === 'function') opts.onIssues(r.issues); chrome(); setMsg(r.message + '. Отменить — кнопка ↶', ''); fitAll(); panelRender(); return r;
+    }
     load(geometry); chrome(); panelRender(); fitAll();
 
     return {
-      setGeometry(g) { history = P.createHistory(g); mode = null; addOpen = false; addFix = false; setMsg('', ''); load(g); chrome(); fitted ? render() : fitAll(); panelRender(); },
+      setGeometry(g) { history = P.createHistory(g); mode = null; addOpen = false; addFix = false; addFile = false; setMsg('', ''); load(g); chrome(); fitted ? render() : fitAll(); panelRender(); },
       getGeometry: () => clone(geometry),
       select(ids) { setSel(ids == null ? [] : [].concat(ids).filter(validSel), false); },
       selected: () => sel.slice(),
       focus(roomId) { const r = drawing.rooms.find(x => x.id === roomId); if (!r || !r.vertices) return false; const pts = worldPts(r); fitTo({x0: Math.min(...pts.map(p => p.x)), y0: Math.min(...pts.map(p => p.y)), x1: Math.max(...pts.map(p => p.x)), y1: Math.max(...pts.map(p => p.y))}); render(); return true; },
       fit: fitAll, zoomIn() { const c = center(); zoomAt(1.4, c[0], c[1]); }, zoomOut() { const c = center(); zoomAt(1 / 1.4, c[0], c[1]); },
-      setReadOnly(v) { readOnly = !!v; mode = null; addOpen = false; addFix = false; preview = null; chrome(); render(); panelRender(); }, isReadOnly: () => readOnly,
+      setReadOnly(v) { readOnly = !!v; mode = null; addOpen = false; addFix = false; addFile = false; preview = null; chrome(); render(); panelRender(); }, isReadOnly: () => readOnly,
       edit, undo, redo, canUndo: () => !readOnly && history.canUndo(), canRedo: () => !readOnly && history.canRedo(),
       setGrid(v) { grid = unk(v) || !(+v > 0) ? null : +v; }, getGrid: () => grid, setSettings(v) { settings = {gap: v && !unk(v.gap) && +v.gap > 0 ? +v.gap : null}; render(); panelRender(); }, getSettings: () => settings, fixtureIssues: () => P.fixtureIssues(drawing, settings), message: () => msg.text,
+      exportSVG: buildSVG, exportPNG, exportJSON: () => P.exportJSON(geometry), importJSON, print: printPlan,
+      download(kind, o) { if (kind === 'svg') { saveBlob(new Blob([buildSVG(o)], {type: 'image/svg+xml'}), fileBase() + '.svg'); return Promise.resolve(); } if (kind === 'json') { saveBlob(new Blob([P.exportJSON(geometry)], {type: 'application/json'}), fileBase() + '.json'); return Promise.resolve(); } if (kind === 'png') return exportPNG(o).then(b => saveBlob(b, fileBase() + '.png')); return Promise.reject(new Error('Неизвестный вид файла: ' + kind)); },
       view: () => Object.assign({}, view), flush: render,
       destroy() { dead = true; if (wrap.parentNode) wrap.parentNode.removeChild(wrap); }
     };

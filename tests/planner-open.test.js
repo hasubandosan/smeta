@@ -33,5 +33,5 @@ t('detachOpening и removeOpening; остальные проёмы и id нет�
   const r = out(O.removeOpening(d, a), g); assert.deepStrictEqual(r.openings.map(x => x.id), [b]); assert.throws(() => O.removeOpening(d, 'нет'), /не найден/); });
 t('splitWall переносит проёмы; round-trip сохраняет неизвестные поля проёма', () => { const g = rect(); g.openings.push({id: 'o', wallId: 'a', roomId: 'r', kind: 'дверь', w: 0.8, h: 2, at: 3, extra: {x: 1}}); const d = O.splitWall(P.fromGeometry(g), 'a', 2), o = out(d, g).openings[0];
   assert.notStrictEqual(o.wallId, 'a'); near(o.at, 1); assert.deepStrictEqual(o.extra, {x: 1}); assert.strictEqual(J(P.toGeometry(P.fromGeometry(g), g)), J(g)); });
-t('версия модуля 0.4.0, операции экспортированы', () => { assert.strictEqual(P.VERSION, '0.6.0'); for (const k of ['addOpening', 'moveOpening', 'setOpeningProps', 'attachOpening', 'detachOpening', 'removeOpening']) assert.strictEqual(typeof O[k], 'function'); });
+t('версия модуля 0.4.0, операции экспортированы', () => { assert.strictEqual(P.VERSION, '0.7.0'); for (const k of ['addOpening', 'moveOpening', 'setOpeningProps', 'attachOpening', 'detachOpening', 'removeOpening']) assert.strictEqual(typeof O[k], 'function'); });
 console.log('Всего: ' + n);
