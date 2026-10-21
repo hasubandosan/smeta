@@ -1,0 +1,40 @@
+// Сантехника и предметы (срез 6), ядро: node tests/planner-fixtures.test.js
+const assert = require('assert'), SM = require('../js/core.js');
+for (const f of ['geometry', 'model', 'seeds', 'rules', 'ver', 'estimate', 'storage', 'planner']) require('../js/' + f + '.js');
+let n = 0; const t = (name, f) => { f(); n++; console.log('OK   ' + name); };
+const P = SM.planner, O = P.ops, J = x => JSON.stringify(x), near = (a, b, e) => assert.ok(Math.abs(a - b) < (e || 1e-6), a + ' ≠ ' + b);
+const base = () => ({walls: [{id: 'a', len: 4, turn: 90}, {id: 'b', len: 3, turn: 90}, {id: 'c', len: 4, turn: 90}, {id: 'd', len: 3, turn: null}, {id: 'e', len: 3, turn: 90}, {id: 'f', len: 3, turn: 90}, {id: 'g', len: 3, turn: 90}, {id: 'h', len: 3, turn: null}],
+  openings: [], rooms: [{id: 'r', name: 'тест', height: 2.5, wallIds: ['a', 'b', 'c', 'd']}, {id: 's', name: 'вторая', height: 2.5, wallIds: ['e', 'f', 'g', 'h'], pos: {x: 6, y: 0, rot: 0}}], fixtures: []});
+const out = (d, g) => { const o = P.toGeometry(d, g), v = SM.geo.validate(o); assert.ok(v.ok, J(v.issues)); return o; };
+const pure = (g, f) => { const d = P.fromGeometry(g), s = J(d); const r = f(d); assert.strictEqual(J(d), s, 'вход не изменён'); return r; };
+const add = (d, p, room) => O.addFixture(d, room || 'r', p);
+
+t('addFixture: поля контракта, габариты неизвестны = null, created, по центру комнаты без координат', () => { const g = base(), d = pure(g, x => add(x, {kind: 'toilet'})), f = out(d, g).fixtures[0];
+  assert.deepStrictEqual([f.roomId, f.kind, f.x, f.y, f.rot, f.w, f.d, f.h], ['r', 'toilet', 2, 1.5, 0, null, null, null]); assert.strictEqual(d.created.fixtureId, f.id); assert.ok(!('name' in f));
+  const g2 = add(P.fromGeometry(g), {kind: 'sink', name: 'Раковина 1', x: 1, y: 1.2, rot: 450, w: 0.5, d: 0.4, h: 0.85}).fixtures[0].src; assert.deepStrictEqual([g2.name, g2.x, g2.y, g2.rot, g2.w, g2.d, g2.h], ['Раковина 1', 1, 1.2, 90, 0.5, 0.4, 0.85]); });
+t('addFixture: ошибки по-русски, пусто вместо вида = other', () => { const d = P.fromGeometry(base());
+  assert.throws(() => add(d, {w: -1}), /Ширина предмета/); assert.throws(() => add(d, {d: 'x'}), /Глубина предмета/); assert.throws(() => add(d, {x: 'q', y: 1}), /числами/); assert.throws(() => add(d, {rot: 'z'}), /Угол/); assert.throws(() => add(d, {}, 'нет'), /не найдено/);
+  assert.strictEqual(add(d, {kind: ''}).fixtures[0].src.kind, 'other'); const g = base(); g.walls[3].len = 1; assert.throws(() => add(P.fromGeometry(g), {kind: 'x'}), /не замкнут/); });
+t('setFixtureProps / moveFixture: числа, пусто = неизвестно, смена помещения, неверное свойство', () => { const g = base(); let d = add(P.fromGeometry(g), {kind: 'bath', w: 1.7, d: 0.7, x: 1, y: 1}); const id = d.created.fixtureId;
+  d = O.setFixtureProps(d, id, {name: 'Ванна', w: '', h: 0.6, rot: -270, kind: 'bath2'}); const q = d.fixtures[0].src; assert.deepStrictEqual([q.name, q.w, q.h, q.rot, q.kind], ['Ванна', null, 0.6, 90, 'bath2']);
+  d = O.setFixtureProps(d, id, {name: ''}); assert.ok(!('name' in d.fixtures[0].src)); d = O.moveFixture(d, id, 0.5, 0.6, 's'); assert.deepStrictEqual([d.fixtures[0].src.roomId, d.fixtures[0].src.x], ['s', 0.5]); out(d, g);
+  assert.throws(() => O.setFixtureProps(d, id, {foo: 1}), /не правится/); assert.throws(() => O.setFixtureProps(d, 'нет', {w: 1}), /не найден/); assert.throws(() => O.moveFixture(d, id, 1, 1, 'нет'), /не найдено/); assert.throws(() => O.moveFixture(d, id, 'x', 1), /числами/); });
+t('removeFixture; предметы переживают правку стен и перенос комнаты (остаются на месте в плане)', () => { const g = base(); let d = add(P.fromGeometry(g), {kind: 'toilet', x: 3, y: 1, w: 0.4, d: 0.6}); const id = d.created.fixtureId;
+  const moved = out(O.moveRoom(d, 'r', 2, 1), g); assert.deepStrictEqual([moved.fixtures[0].x, moved.fixtures[0].y], [3, 1]); const s = out(O.setWallLength(P.fromGeometry(out(d, g)), 'a', 3.5), g); assert.strictEqual(s.fixtures.length, 1);
+  assert.strictEqual(out(O.removeFixture(d, id), g).fixtures.length, 0); assert.throws(() => O.removeFixture(d, 'нет'), /не найден/); assert.strictEqual(J(P.toGeometry(P.fromGeometry(out(d, g)), g).fixtures), J(out(d, g).fixtures)); });
+t('roomAt: помещение под мировой точкой с учётом положения комнаты', () => { const d = P.fromGeometry(base()); assert.strictEqual(P.roomAt(d, {x: 1, y: 1}), 'r'); assert.strictEqual(P.roomAt(d, {x: 7, y: 1}), 's'); assert.strictEqual(P.roomAt(d, {x: 5, y: 1}), null); });
+t('fixtureIssues: чисто; выход за стену; пересечение; зазор только если задан; без габаритов не проверяется', () => { let d = P.fromGeometry(base());
+  d = add(d, {kind: 'sink', x: 1, y: 1, w: 1, d: 0.5}); d = add(d, {kind: 'toilet', x: 2.6, y: 1, w: 0.4, d: 0.6}); assert.deepStrictEqual(P.fixtureIssues(d), []);
+  assert.strictEqual(P.fixtureIssues(d, {gap: 1}).filter(i => i.code === 'fixture_gap').length, 1); assert.deepStrictEqual(P.fixtureIssues(d, {gap: null}), []); assert.deepStrictEqual(P.fixtureIssues(d, {gap: 0.05}), []);
+  let e = O.moveFixture(d, d.fixtures[1].id, 1.4, 1); const ov = P.fixtureIssues(e); assert.deepStrictEqual(ov.map(i => i.code), ['fixture_overlap']); assert.ok(/пересекаются/.test(ov[0].text));
+  e = O.moveFixture(d, d.fixtures[1].id, 3.9, 1); assert.deepStrictEqual(P.fixtureIssues(e).map(i => i.code), ['fixture_out']); e = add(d, {kind: 'toilet', x: 9, y: 9}); assert.strictEqual(P.fixtureIssues(e).length, 0, 'без габаритов — метка, не проверяем'); });
+t('fixtureIssues: предмет вплотную к стене и повёрнутый предмет внутри — не выход; предметы в разных комнатах не пересекаются', () => { let d = add(P.fromGeometry(base()), {x: 0.25, y: 1.5, w: 0.5, d: 0.6}); assert.deepStrictEqual(P.fixtureIssues(d), []);
+  d = add(d, {x: 2, y: 1.5, w: 1, d: 1, rot: 45}); assert.deepStrictEqual(P.fixtureIssues(d), []); d = add(d, {x: 1, y: 1, w: 1, d: 1}, 's'); assert.deepStrictEqual(P.fixtureIssues(d), []);
+  d = add(d, {x: 1.5, y: 1.5, w: 1, d: 1}, 's'); assert.strictEqual(P.fixtureIssues(d).length, 1); });
+t('snapFixture: вплотную к стене, затем в угол; далеко и наклонно — без привязки', () => { const d = P.fromGeometry(base());
+  let s = P.snapFixture(d, 'r', {x: 0.28, y: 1.5, rot: 0, w: 0.5, d: 0.6}, 0.1); assert.strictEqual(s.kind, 'wall'); near(s.x, 0.25); near(s.y, 1.5);
+  s = P.snapFixture(d, 'r', {x: 0.28, y: 0.33, rot: 0, w: 0.5, d: 0.6}, 0.1); near(s.x, 0.25); near(s.y, 0.3); s = P.snapFixture(d, 'r', {x: 0.28, y: 0.33, rot: 90, w: 0.5, d: 0.6}, 0.1); near(s.x, 0.3); near(s.y, 0.25);
+  s = P.snapFixture(d, 'r', {x: 2, y: 1.5, rot: 0, w: 0.5, d: 0.6}, 0.1); assert.strictEqual(s.kind, null); near(s.x, 2); s = P.snapFixture(d, 'r', {x: 0.4, y: 1.5, rot: 20, w: 0.5, d: 0.6}, 0.3); assert.strictEqual(s.kind, null);
+  s = P.snapFixture(d, 'r', {x: 0.28, y: 1.5, rot: 0}, 0.1); assert.strictEqual(s.kind, null, 'без габаритов не привязываем'); s = P.snapFixture(d, 'r', {x: 3.77, y: 1.5, rot: 0, w: 0.5, d: 0.6}, 0.1); near(s.x, 3.75); });
+t('набор типов задан списком подписей; эталонная ванная: предметы читаются и проходят validate', () => { assert.ok(P.FIXTURE_KINDS.length >= 5 && P.FIXTURE_KINDS.every(k => k.length === 2)); const g = SM.seeds.bathroom().geometry, d = P.fromGeometry(g); assert.ok(Array.isArray(P.fixtureIssues(d))); assert.ok(SM.geo.validate(P.toGeometry(d, g)).ok); assert.strictEqual(P.VERSION, '0.6.0'); });
+console.log('Всего: ' + n);

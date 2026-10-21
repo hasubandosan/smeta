@@ -425,6 +425,70 @@
     return out.sort((x, y) => y.overlap - x.overlap);
   }
 
+  // ===== Сантехника и предметы (срез 6). x, y — центр предмета в локальных координатах помещения, rot — градусы, w × d — габариты (пусто = неизвестно, на плане метка)
+  const FIXTURE_KINDS = [['toilet', 'Унитаз'], ['sink', 'Раковина'], ['bath', 'Ванна'], ['shower', 'Душ'], ['washer', 'Стиральная машина'], ['boiler', 'Бойлер'], ['other', 'Другое']];   // набор подписей CAD (P23), не нормы и не габариты
+  const kindLabel = k => { const x = FIXTURE_KINDS.find(a => a[0] === k); return x ? x[1] : (unk(k) ? '' : String(k)); };
+  const fixName = f => f.src.name || kindLabel(f.src.kind) || f.id;
+  const fixEd = (c, id) => { const f = c.fixtures.find(x => x.id === id); if (!f) throw new Error('Предмет не найден: ' + id); return f; };
+  const fixSized = q => !unk(q.x) && !unk(q.y) && !unk(q.w) && !unk(q.d) && +q.w > 0 && +q.d > 0;
+  const fixLocal = q => { const a = rad(+q.rot || 0), cs = Math.cos(a), sn = Math.sin(a), hw = q.w / 2, hd = q.d / 2; return [[-hw, -hd], [hw, -hd], [hw, hd], [-hw, hd]].map(u => ({x: +q.x + u[0] * cs - u[1] * sn, y: +q.y + u[0] * sn + u[1] * cs})); };
+  const roomClosed = r => r && r.vertices && r.closed;
+  function addFixture(d, roomId, props) {
+    props = props || {};
+    return edit(d, c => { const r = roomAny(c, roomId); let x = props.x, y = props.y;
+      if (unk(x) || x === '' || unk(y) || y === '') { if (!roomClosed(r)) throw new Error('Укажите, где поставить предмет: контур помещения не замкнут'); const m = meanPt(r.vertices); x = m.x; y = m.y; }   // по центру комнаты — удобство, P23
+      x = finiteN(x, 'Координаты предмета должны быть числами'); y = finiteN(y, 'Координаты предмета должны быть числами');
+      const id = SM.uid(), src = {id, roomId, kind: unk(props.kind) || props.kind === '' ? 'other' : String(props.kind), x: round9(x), y: round9(y), rot: unk(props.rot) || props.rot === '' ? 0 : round9(normAngle(finiteN(props.rot, 'Угол должен быть числом'))),
+        w: optNum(props.w, 'Ширина предмета', true), d: optNum(props.d, 'Глубина предмета', true), h: optNum(props.h, 'Высота предмета', true)};
+      if (!unk(props.name) && props.name !== '') src.name = String(props.name); c.fixtures.push({id, src}); c.created = {fixtureId: id}; });
+  }
+  function setFixtureProps(d, id, props) {
+    return edit(d, c => { const f = fixEd(c, id);
+      for (const k of Object.keys(props || {})) { const v = props[k];
+        if (k === 'kind') f.src.kind = unk(v) || v === '' ? 'other' : String(v);
+        else if (k === 'name') { if (unk(v) || v === '') delete f.src.name; else f.src.name = String(v); }
+        else if (k === 'w' || k === 'd' || k === 'h') f.src[k] = optNum(v, {w: 'Ширина предмета', d: 'Глубина предмета', h: 'Высота предмета'}[k], true);
+        else if (k === 'x' || k === 'y') f.src[k] = round9(finiteN(v, 'Координаты предмета должны быть числами'));
+        else if (k === 'rot') f.src.rot = round9(normAngle(finiteN(v, 'Угол должен быть числом')));
+        else if (k === 'roomId') { roomAny(c, v); f.src.roomId = v; }
+        else throw new Error('Это свойство предмета здесь не правится: ' + k); } });
+  }
+  // Переставить центр предмета; roomId — если предмет переехал в другое помещение (x, y — в его локальных координатах)
+  const moveFixture = (d, id, x, y, roomId) => setFixtureProps(d, id, Object.assign({x, y}, unk(roomId) ? {} : {roomId}));
+  const removeFixture = (d, id) => edit(d, c => { const f = fixEd(c, id); c.fixtures = c.fixtures.filter(x => x !== f); });
+  // Какое помещение накрывает мировая точка (замкнутые контуры), или null
+  function roomAt(d, pt) { for (const r of d.rooms) if (roomClosed(r) && inPoly(r.vertices, toLocal(r, pt))) return r.id; return null; }
+
+  // Прижать предмет к стенам своей комнаты: если его сторона параллельна стене и зазор до неё ≤ tol — вплотную; затем вторая стена (угол). q = {x, y, rot, w, d} локально. -> {x, y, kind: 'wall'|null}
+  function snapFixture(d, roomId, q, tol) {
+    const r = d.rooms.find(z => z.id === roomId); let x = +q.x, y = +q.y; if (!roomClosed(r) || !fixSized(q)) return {x, y, kind: null};
+    tol = unk(tol) ? MOVE_TOL : +tol; const a = rad(+q.rot || 0), e1x = Math.cos(a), e1y = Math.sin(a), v = r.vertices, n = v.length, used = new Set(); let kind = null;
+    for (let pass = 0; pass < 2; pass++) { let best = null;
+      for (let i = 0; i < n; i++) { if (used.has(i)) continue; const A = v[i], B = v[(i + 1) % n], L = Math.hypot(B.x - A.x, B.y - A.y); if (!(L > 0)) continue;
+        const ux = (B.x - A.x) / L, uy = (B.y - A.y) / L, nx = -uy, ny = ux; let hn, hu;
+        if (Math.abs(ux * e1y - uy * e1x) < 0.02) { hn = q.d / 2; hu = q.w / 2; } else if (Math.abs(ux * e1x + uy * e1y) < 0.02) { hn = q.w / 2; hu = q.d / 2; } else continue;
+        const s = nx * (x - A.x) + ny * (y - A.y), t = ux * (x - A.x) + uy * (y - A.y), gap = Math.abs(s) - hn;
+        if (Math.abs(gap) <= tol && t + hu > 0 && t - hu < L && (!best || Math.abs(gap) < Math.abs(best.gap))) best = {i, gap, nx, ny, sg: s >= 0 ? 1 : -1}; }
+      if (!best) break; used.add(best.i); kind = 'wall'; x -= best.sg * best.gap * best.nx; y -= best.sg * best.gap * best.ny; }
+    return {x: round9(x), y: round9(y), kind};
+  }
+
+  // Замечания по предметам (не запреты): выход за стены, пересечение предметов, зазор меньше заданного. settings.gap — зазор между предметами, м (пусто = не проверять, P23)
+  function fixtureIssues(d, settings) {
+    const out = [], gap = settings && !unk(settings.gap) && +settings.gap > 0 ? +settings.gap : null, items = [];
+    for (const f of d.fixtures) { const r = d.rooms.find(x => x.id === f.src.roomId); if (!r || !fixSized(f.src)) continue; const loc = fixLocal(f.src); items.push({f, r, loc, wld: loc.map(p => toWorld(r, p))});
+      if (roomClosed(r)) { const v = r.vertices, onIn = p => inPoly(v, p) || v.some((a, i) => segDist(p, a, v[(i + 1) % v.length]).dist < 1e-6);
+        let bad = loc.some(p => !onIn(p)); if (!bad) for (let i = 0; i < v.length && !bad; i++) for (let j = 0; j < 4; j++) if (cross(v[i], v[(i + 1) % v.length], loc[j], loc[(j + 1) % 4])) { bad = true; break; }
+        if (bad) out.push({id: f.id, code: 'fixture_out', text: 'Предмет «' + fixName(f) + '» выходит за стены помещения'}); } }
+    const sat = (A, B) => { let m = Infinity; for (const P of [A, B]) for (let i = 0; i < 4; i++) { const a = P[i], b = P[(i + 1) % 4], nx = b.y - a.y, ny = a.x - b.x, L = Math.hypot(nx, ny), ux = nx / L, uy = ny / L;
+      const pr = Q => { let lo = Infinity, hi = -Infinity; for (const p of Q) { const t = p.x * ux + p.y * uy; lo = Math.min(lo, t); hi = Math.max(hi, t); } return [lo, hi]; }, A1 = pr(A), B1 = pr(B), o = Math.min(A1[1], B1[1]) - Math.max(A1[0], B1[0]); if (o <= 1e-6) return 0; m = Math.min(m, o); } return m; };
+    const dist = (A, B) => { let m = Infinity; for (const [P, Q] of [[A, B], [B, A]]) for (const p of P) for (let i = 0; i < 4; i++) m = Math.min(m, segDist(p, Q[i], Q[(i + 1) % 4]).dist); return m; };
+    for (let i = 0; i < items.length; i++) for (let j = i + 1; j < items.length; j++) { const A = items[i], B = items[j], nm = '«' + fixName(A.f) + '» и «' + fixName(B.f) + '»';
+      if (sat(A.wld, B.wld) > 0) out.push({id: A.f.id, other: B.f.id, code: 'fixture_overlap', text: 'Предметы ' + nm + ' пересекаются'});
+      else if (gap !== null) { const g = dist(A.wld, B.wld); if (g < gap - 1e-9) out.push({id: A.f.id, other: B.f.id, code: 'fixture_gap', text: 'Зазор между ' + nm + ' — ' + fmtM(g) + ' м, меньше заданных ' + fmtM(gap) + ' м'}); } }
+    return out;
+  }
+
   // Отмена/повтор: снимки геометрии, без ограничения глубины. История в проект не попадает
   function createHistory(geometry) {
     const past = [], future = []; let cur = {g: clone(geometry), reason: 'start'};
@@ -437,8 +501,8 @@
     };
   }
 
-  SM.planner = Object.assign(SM.planner || {}, {VERSION: '0.5.0', CONTRACT: 1,
-    fromGeometry, toGeometry, moveVertex, snapPoint, toWorld, toLocal, finish, measure, describe, createHistory, vertexAngle, nearestOnContour, snapRoomMove, findSharedWalls,
-    ops: {moveVertex, setWallLength, setVertexAngle, splitWall, removeVertex, setWallProps, setRoomProps, addRoomFromPoints, addRoomRect, addRoomL, removeRoom, splitRoom, addOpening, moveOpening, setOpeningProps, attachOpening, detachOpening, removeOpening, moveRoom, rotateRoom, linkWalls, unlinkWall, alignRoomToWall}});
+  SM.planner = Object.assign(SM.planner || {}, {VERSION: '0.6.0', CONTRACT: 1,
+    fromGeometry, toGeometry, moveVertex, snapPoint, toWorld, toLocal, finish, measure, describe, createHistory, vertexAngle, nearestOnContour, snapRoomMove, findSharedWalls, snapFixture, fixtureIssues, roomAt, FIXTURE_KINDS,
+    ops: {moveVertex, setWallLength, setVertexAngle, splitWall, removeVertex, setWallProps, setRoomProps, addRoomFromPoints, addRoomRect, addRoomL, removeRoom, splitRoom, addOpening, moveOpening, setOpeningProps, attachOpening, detachOpening, removeOpening, moveRoom, rotateRoom, linkWalls, unlinkWall, alignRoomToWall, addFixture, setFixtureProps, moveFixture, removeFixture}});
 })(typeof window !== 'undefined' ? window : globalThis);
 if (typeof module !== 'undefined') module.exports = (typeof window !== 'undefined' ? window : globalThis).SM;
