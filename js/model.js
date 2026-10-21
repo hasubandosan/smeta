@@ -22,6 +22,23 @@
   M.addObservation = (obj, o) => { const x = Object.assign({id: SM.uid(), params: {}}, o); obj.observations.push(x); return x; };
   M.addGoal = (obj, g) => { const x = Object.assign({id: SM.uid(), params: {}}, g); obj.goals.push(x); return x; };
 
+  // Поверхности помещений выводятся из геометрии: пол и потолок у каждого помещения, по поверхности «стена» на каждую стену помещения.
+  // Идемпотентно. Существующие (id, состояние, цели, короба и т. п.) не трогаются; имя поверхности стены = имя стены (один источник).
+  // Стена убрана из помещения: поверхность без состояния/целей/наблюдений удаляется, иначе помечается orphan (её данные сохраняются, в расчёты она не входит).
+  M.syncSurfaces = obj => {
+    const g = obj.geometry, S = obj.surfaces, out = {added: [], removed: [], orphaned: []}, uid = SM.uid;
+    const used = id => Object.keys(obj.state).some(k => k.startsWith(id + '.')) || obj.goals.some(x => x.target === id) || obj.observations.some(x => x.target === id);
+    for (const r of g.rooms) {
+      const ids = new Set(r.wallIds || []), mine = S.filter(s => s.roomId === r.id);
+      for (const [kind, name] of [['floor', 'Пол'], ['ceiling', 'Потолок']]) if (!mine.some(s => s.kind === kind)) { const s = {id: uid(), roomId: r.id, kind, name, wallId: null}; S.push(s); out.added.push(s.id); }
+      for (const wid of ids) { const w = g.walls.find(x => x.id === wid); if (!w) continue; const ex = mine.find(s => s.kind === 'wall' && s.wallId === wid);
+        if (!ex) { const s = {id: uid(), roomId: r.id, kind: 'wall', name: w.name || 'Стена', wallId: wid}; S.push(s); out.added.push(s.id); } else { if (w.name) ex.name = w.name; delete ex.orphan; } }
+      for (const s of mine.filter(x => x.kind === 'wall' && x.wallId && !ids.has(x.wallId))) {
+        if (used(s.id)) { if (!s.orphan) { s.orphan = true; out.orphaned.push(s.id); } } else { S.splice(S.indexOf(s), 1); out.removed.push(s.id); } }
+    }
+    return out;
+  };
+
   // Производные величины всего объекта: по каждому помещению (из геометрии, не хранятся)
   M.derive = obj => obj.geometry.rooms.map(r => Object.assign({roomId: r.id, name: r.name}, SM.geo.deriveRoom(obj.geometry, r)));
 
@@ -31,7 +48,7 @@
     if (v > SCHEMA) throw new Error('данные созданы более новой версией приложения (схема ' + v + ' > ' + SCHEMA + ')');
     d.geometry = Object.assign({walls: [], openings: [], rooms: []}, d.geometry);
     for (const k of ['surfaces', 'observations', 'goals', 'purchased']) d[k] = d[k] || [];
-    d.state = d.state || {}; d.schemaVersion = SCHEMA; return d;
+    d.state = d.state || {}; d.schemaVersion = SCHEMA; M.syncSurfaces(d); return d;
   };
 })(typeof window !== 'undefined' ? window : globalThis);
 if (typeof module !== 'undefined') module.exports = (typeof window !== 'undefined' ? window : globalThis).SM;

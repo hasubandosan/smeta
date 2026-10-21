@@ -5,7 +5,7 @@
 (function (root) {
   'use strict';
   const SM = root.SM = root.SM || {}, M = SM.model, R = SM.routes = {};
-  const apply = (o, roomId, kind, layer, value) => o.surfaces.filter(s => s.roomId === roomId && s.kind === kind).forEach(s => M.setState(o, s.id, layer, value));
+  const apply = (o, roomId, kind, layer, value) => o.surfaces.filter(s => s.roomId === roomId && s.kind === kind && !s.orphan).forEach(s => M.setState(o, s.id, layer, value));
 
   R.compare = (S, route) => {
     const lib = S.library, rid = route.roomId, clone = JSON.parse(JSON.stringify(S.object)), items = [];

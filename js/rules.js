@@ -13,8 +13,9 @@
       case '>=': r = +a >= +b; break; case '<=': r = +a <= +b; break; case 'in': r = Array.isArray(b) && b.includes(a); break; default: throw new Error('неизвестная операция ' + op); }
     return r ? T : F;
   };
-  const surfaces = (ctx, kind) => ctx.obj.surfaces.filter(s => s.roomId === ctx.room.id && s.kind === kind);
-  const mkCtx = (obj, room) => { const sid = new Set(obj.surfaces.filter(s => s.roomId === room.id).map(s => s.id));
+  // Поверхности вида kind в помещении. Устаревшие (orphan: стена удалена из геометрии) не участвуют. Если задана область процесса (ctx.scope) — только её поверхности этого вида.
+  const surfaces = (ctx, kind) => ctx.obj.surfaces.filter(s => s.roomId === ctx.room.id && s.kind === kind && !s.orphan && !(ctx.scope && ctx.scopeKind === kind && !ctx.scope.has(s.id)));
+  const mkCtx = (obj, room) => { const sid = new Set(obj.surfaces.filter(s => s.roomId === room.id && !s.orphan).map(s => s.id));
     return {obj, room, goals: obj.goals.filter(g => g.target === room.id || sid.has(g.target))}; };
   const effVal = e => (e.op === 'ADD' ? 'YES' : e.op === 'REMOVE' ? 'NO' : e.value);
 
@@ -41,18 +42,22 @@
     throw new Error('неизвестное условие');
   };
 
-  // plan(obj, lib, roomId) -> {items:[{id,name,status,reasons,why,recommended}], notes, questions}
+  // plan(obj, lib, roomId) -> {items:[{id,name,status,reasons,why,scope}], notes, questions}
+  // scope: массив id поверхностей, на которые направлен процесс (цель указывает на конкретную поверхность), или null = все поверхности этого вида в помещении
   // status: DONE | READY | NEEDS_INFO | BLOCKED
   R.plan = (obj, lib, roomId) => {
     const room = obj.geometry.rooms.find(r => r.id === roomId), ctx = mkCtx(obj, room), route = new Map(), forbid = new Map(), notes = [], questions = [];
     const add = (pid, why) => { if (!route.has(pid)) route.set(pid, []); if (why && !route.get(pid).includes(why)) route.get(pid).push(why); };
-    for (const g of ctx.goals) for (const pid of (lib.goals || {})[g.result] || []) add(pid, 'цель: ' + ((lib.goalNames || {})[g.result] || g.result));
+    const scope = new Map(), addScope = (pid, ids) => { if (ids === null) scope.set(pid, null); else if (scope.get(pid) !== null) { const c = scope.get(pid) || new Set(); ids.forEach(x => c.add(x)); scope.set(pid, c); } };
+    for (const g of ctx.goals) { const tgt = obj.surfaces.find(s => s.id === g.target);
+      for (const pid of (lib.goals || {})[g.result] || []) { add(pid, 'цель: ' + ((lib.goalNames || {})[g.result] || g.result) + (tgt ? ' (' + tgt.name + ')' : ''));
+        const pr = lib.processes.find(x => x.id === pid); addScope(pid, tgt && pr && tgt.kind === pr.surface ? new Set([tgt.id]) : null); } }
     for (const rule of lib.rules || []) {
       const v = R.evalCond(rule.if, ctx);
       if (v === U) { if (rule.ask) questions.push({text: rule.ask, why: rule.name || rule.id}); continue; }
       if (v !== T) continue;
       for (const a of rule.then) {
-        if (a.do === 'REQUIRE' || a.do === 'ADD_PROCESS') add(a.process, a.because);
+        if (a.do === 'REQUIRE' || a.do === 'ADD_PROCESS') { add(a.process, a.because); addScope(a.process, null); }
         else if (a.do === 'FORBID') forbid.set(a.process, a.because);
         else if (a.do === 'RECOMMEND' || a.do === 'WARN') notes.push({kind: a.do, text: a.text, because: a.because});
         else throw new Error('неизвестное действие ' + a.do);
@@ -60,9 +65,12 @@
     }
     const procs = lib.processes.filter(p => route.has(p.id)), memo = new Map();
     const byId = id => procs.find(p => p.id === id);
+    const key = (p, sc) => p.id + '|' + (sc ? [...sc].sort().join(',') : '*');
+    const withScope = (sc, kind, fn) => { const a = ctx.scope, b = ctx.scopeKind; ctx.scope = sc; ctx.scopeKind = kind; try { return fn(); } finally { ctx.scope = a; ctx.scopeKind = b; } };
     const effDone = (p) => p.effects.every(e => R.evalCond({state: {kind: p.surface, layer: e.layer, is: effVal(e)}}, ctx) === T);
-    const status = p => {
-      if (memo.has(p.id)) return memo.get(p.id);
+    // status(p, sc): sc — область процесса. Предшествующий процесс того же вида проверяется на ТОЙ ЖЕ области (плитка на стене 1 ждёт подготовку стены 1, а не всех), другого вида — на своей.
+    const status = (p, sc) => withScope(sc || null, p.surface, () => {
+      const mk = key(p, sc); if (memo.has(mk)) return memo.get(mk);
       let res;
       if (forbid.has(p.id)) res = {status: 'BLOCKED', reasons: ['Запрещено: ' + forbid.get(p.id)]};
       else if (effDone(p)) res = {status: 'DONE', reasons: []};
@@ -71,17 +79,17 @@
         if (nv === F) res = {status: 'DONE', reasons: ['не требуется']};
         else if (nv === U) res = {status: 'NEEDS_INFO', reasons: [], question: p.ask || 'Уточните: ' + unk.join(', ')};
         else {
-          const blockers = (p.after || []).map(byId).filter(Boolean).map(a => [a, status(a)]).filter(([, s]) => s.status !== 'DONE')
+          const blockers = (p.after || []).map(byId).filter(Boolean).map(a => [a, status(a, a.surface === p.surface ? sc : scope.get(a.id) || null)]).filter(([, s]) => s.status !== 'DONE')
             .map(([a, s]) => 'Сначала: ' + a.name + (s.status === 'NEEDS_INFO' ? ' (нужно уточнить)' : ''));
           if (blockers.length) res = {status: 'BLOCKED', reasons: blockers};
           else { const unk2 = [], rv = p.requires ? R.evalCond(p.requires, ctx, unk2) : T;
             res = rv === F ? {status: 'BLOCKED', reasons: [p.blockedText || 'Не выполнено условие']} : rv === U ? {status: 'NEEDS_INFO', reasons: [], question: p.ask || 'Уточните: ' + unk2.join(', ')} : {status: 'READY', reasons: []}; }
         }
       }
-      memo.set(p.id, res); return res;
-    };
-    const items = procs.map(p => { const s = status(p); if (s.question && !questions.some(q => q.text === s.question)) questions.push({text: s.question, why: p.name});
-      return {id: p.id, name: p.name, surface: p.surface, status: s.status, reasons: s.reasons, why: route.get(p.id)}; });
+      memo.set(mk, res); return res;
+    });
+    const items = procs.map(p => { const sc = scope.get(p.id) || null, s = status(p, sc); if (s.question && !questions.some(q => q.text === s.question)) questions.push({text: s.question, why: p.name});
+      return {id: p.id, name: p.name, surface: p.surface, status: s.status, reasons: s.reasons, why: route.get(p.id), scope: sc ? [...sc] : null}; });
     return {roomId, items, notes, questions};
   };
 
@@ -90,7 +98,7 @@
     const it = R.plan(obj, lib, roomId).items.find(x => x.id === pid);
     if (!it || it.status !== 'READY') throw new Error('Сейчас нельзя: ' + (it ? (it.reasons.join('; ') || it.status) : 'процесса нет в маршруте'));
     const p = lib.processes.find(x => x.id === pid);
-    for (const s of obj.surfaces.filter(x => x.roomId === roomId && x.kind === p.surface)) for (const e of p.effects) M.setState(obj, s.id, e.layer, effVal(e));
+    for (const s of obj.surfaces.filter(x => x.roomId === roomId && x.kind === p.surface && !x.orphan && (!it.scope || it.scope.includes(x.id)))) for (const e of p.effects) M.setState(obj, s.id, e.layer, effVal(e));
     return obj;
   };
 })(typeof window !== 'undefined' ? window : globalThis);

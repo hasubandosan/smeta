@@ -5,18 +5,24 @@
   'use strict';
   const SM = root.SM = root.SM || {}, num = v => (SM.isUnknown(v) ? 0 : +v);
   const E = SM.est = {};
-  E.vars = (S, item, tech) => {
+  // scopeIds — поверхности, на которые направлен процесс (из плана правил); null = всё помещение
+  E.vars = (S, item, tech, scopeIds) => {
     const o = S.object, room = o.geometry.rooms.find(r => r.id === item.roomId), V = {};
     if (room) { const d = SM.geo.deriveRoom(o.geometry, room); Object.assign(V, {floor: d.floor, ceiling: d.ceiling, perimeter: d.perimeter, walls: d.wallArea, height: room.height});
       V.box = o.surfaces.filter(s => s.kind === 'box' && s.roomId === room.id).reduce((a, s) => a + 2 * (s.w + s.l) * s.h, 0) || null; }
+    // Работа на части стен: площадь только выбранных стен (net из геометрии). Проём без привязки к стене = неизвестно, на какую стену он приходится → площадь неизвестна, не угадывается.
+    if (room && scopeIds) { const ws = o.surfaces.filter(s => s.roomId === room.id && s.kind === 'wall' && !s.orphan), pick = ws.filter(s => scopeIds.includes(s.id));
+      if (pick.length && pick.length < ws.length) { const d = SM.geo.deriveRoom(o.geometry, room), loose = o.geometry.openings.some(x => !x.wallId && x.roomId === room.id);
+        const nets = pick.map(s => (d.walls.find(w => w.id === s.wallId) || {}).net); V.walls = loose || nets.some(x => x === null || x === undefined) ? null : nets.reduce((a, b) => a + b, 0); } }
     for (const p of tech.params || []) V[p.key] = p.def;
     return Object.assign(V, item.values || {});
   };
   E.compute = S => {
     const rows = [], need = new Map(), f = S.fin || {}, skipped = [], cache = {};
-    const isDone = item => { if (!item.processId || !S.library || !SM.rules || (item.status && item.status !== 'PLANNED')) return false;
-      try { const P = cache[item.roomId] || (cache[item.roomId] = SM.rules.plan(S.object, S.library, item.roomId)), it = P.items.find(x => x.id === item.processId); return !!it && it.status === 'DONE'; } catch (e) { return false; } };
-    for (const item of S.plan) { const tech = (SM.ver ? SM.ver.resolve(S, item) : S.techs.find(t => t.id === item.techId)); if (!tech) continue; if (isDone(item)) { skipped.push(item.id); continue; } const V = E.vars(S, item, tech);
+    const planOf = item => { if (!item.processId || !S.library || !SM.rules) return null;
+      try { const P = cache[item.roomId] || (cache[item.roomId] = SM.rules.plan(S.object, S.library, item.roomId)); return P.items.find(x => x.id === item.processId) || null; } catch (e) { return null; } };
+    const isDone = item => { if (item.status && item.status !== 'PLANNED') return false; const it = planOf(item); return !!it && it.status === 'DONE'; };
+    for (const item of S.plan) { const tech = (SM.ver ? SM.ver.resolve(S, item) : S.techs.find(t => t.id === item.techId)); if (!tech) continue; if (isDone(item)) { skipped.push(item.id); continue; } const V = E.vars(S, item, tech, (planOf(item) || {}).scope);
       for (const op of tech.ops) {
         if ((item.skipOps || {})[op.id]) continue;      // операция не входит в этот пункт плана (перенос из старого приложения: часть шагов не выбрана)
         const qo = (item.opQty || {})[op.id], q = SM.evalExpr(qo !== undefined && qo !== '' ? qo : op.qty, V), row = {item, tech, op, q: q.ok ? q.value : null, missing: q.unknown || [], error: q.error, work: null, mats: []};

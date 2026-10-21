@@ -8,7 +8,7 @@
   function load() { try { return SM.store.load(localStorage).S; } catch (e) { alert('Не удалось прочитать данные: ' + e.message + '. Данные не тронуты.'); throw e; } }
   let saveErr = false, syncT, cloudMsg = '';
   const cfg = () => SM.store.cfg(localStorage), cloudApi = () => SM.store.cloud(localStorage, (u, o) => fetch(u, o)), stamp = () => new Date().toLocaleTimeString('ru-RU', {hour: '2-digit', minute: '2-digit'});
-  const save = () => { const r = SM.store.save(localStorage, S); if (!r.ok) { if (!saveErr) alert('Не удалось сохранить: ' + r.error + '. Скачайте копию во вкладке «Данные».'); saveErr = true; } else { saveErr = false; schedulePush(); } };
+  const save = () => { SM.model.syncSurfaces(S.object); const r = SM.store.save(localStorage, S); if (!r.ok) { if (!saveErr) alert('Не удалось сохранить: ' + r.error + '. Скачайте копию во вкладке «Данные».'); saveErr = true; } else { saveErr = false; schedulePush(); } };
   function schedulePush() { const c = cfg(); if (!c.token || !c.gistId || c.auto === false) return; clearTimeout(syncT); cloudMsg = '☁ …'; syncT = setTimeout(async () => {
     try { await cloudApi().push(S); cloudMsg = '☁ сохранено ' + stamp(); } catch (e) { cloudMsg = e.conflict ? '☁ в облаке более новые данные — откройте вкладку «Данные»' : '☁ ошибка: ' + e.message; } paintSync(); }, 3000); }
   function paintSync() { const el = $('sync'); if (el) el.textContent = cfg().token ? cloudMsg : ''; }
@@ -27,7 +27,7 @@
       <table><tr><th>Стена<th>Длина, м<th>Поворот в конце, °<th>Материал<th></tr>${r.wallIds.map((wid, i) => { const wi = g.walls.findIndex(w => w.id === wid);
         return `<tr><td>${inp('object.geometry.walls.' + wi + '.name', g.walls[wi].name, {w: 80})}<td>${inp('object.geometry.walls.' + wi + '.len', g.walls[wi].len, {n: 1, w: 60})}<td>${inp('object.geometry.walls.' + wi + '.turn', g.walls[wi].turn, {n: 1, w: 50, ph: '90'})}<td>${inp('object.geometry.walls.' + wi + '.material', g.walls[wi].material, {w: 110})}<td>${btn('wall-del', ri + '.' + i, '✕')}</tr>`; }).join('')}</table>
       ${btn('wall-add', ri, '＋ Стена')}
-      <h4>Проёмы (двери, окна)</h4><table>${g.openings.map((p, i) => p.roomId === r.id ? `<tr><td>${inp('object.geometry.openings.' + i + '.kind', p.kind, {w: 80})}<td>${inp('object.geometry.openings.' + i + '.w', p.w, {n: 1, w: 55})} ×<td>${inp('object.geometry.openings.' + i + '.h', p.h, {n: 1, w: 55})} м<td>${btn('del', 'object.geometry.openings.' + i, '✕')}</tr>` : '').join('')}</table>
+      <h4>Проёмы (двери, окна)</h4><table>${g.openings.map((p, i) => p.roomId === r.id ? `<tr><td>${inp('object.geometry.openings.' + i + '.kind', p.kind, {w: 80})}<td>${inp('object.geometry.openings.' + i + '.w', p.w, {n: 1, w: 55})} ×<td>${inp('object.geometry.openings.' + i + '.h', p.h, {n: 1, w: 55})} м<td>${sel('object.geometry.openings.' + i + '.wallId', p.wallId || '', [['', 'стена неизвестна']].concat(r.wallIds.map(wid => [wid, (g.walls.find(w => w.id === wid) || {}).name || 'стена'])))}<td>${btn('del', 'object.geometry.openings.' + i, '✕')}</tr>` : '').join('')}</table>
       ${btn('open-add', ri, '＋ Проём')}</div>`; }).join('') + btn('room-add', '', '＋ Помещение') +
       `<div class=card><h3>Короба и поверхности</h3>${o.surfaces.map((s, i) => s.kind === 'box' ? `<div>${esc(s.name)}: ${inp('object.surfaces.' + i + '.w', s.w, {n: 1, w: 50})} × ${inp('object.surfaces.' + i + '.l', s.l, {n: 1, w: 50})} × ${inp('object.surfaces.' + i + '.h', s.h, {n: 1, w: 50})} м ${s.assumed ? '<i class=hint>(размер взят условно — поправьте)</i>' : ''}</div>` : '').join('') || '<i class=hint>нет</i>'}</div>`;
   }
@@ -96,17 +96,17 @@
   function viewState() {
     const o = S.object, lib = S.library;
     return '<h2>Состояние и что дальше</h2><p class=hint>«Неизвестно» ≠ «нет»: система не считает неизвестное отсутствующим. Отметьте то, что знаете — список «что дальше» обновится.</p>' + o.geometry.rooms.map(r => {
-      const P = SM.rules.plan(o, lib, r.id), kinds = ['floor', 'wall', 'ceiling', 'box'].filter(k => o.surfaces.some(x => x.roomId === r.id && x.kind === k));
+      const P = SM.rules.plan(o, lib, r.id), kinds = ['floor', 'wall', 'ceiling', 'box'].filter(k => o.surfaces.some(x => x.roomId === r.id && x.kind === k && !x.orphan));
       const groups = ['READY', 'NEEDS_INFO', 'BLOCKED', 'DONE'].map(k => { const L = P.items.filter(i => i.status === k); if (!L.length) return '';
-        return `<h4>${ST[k][0]} (${L.length})</h4>` + L.map(i => `<div class=op>${ST[k][1]} <b>${esc(i.name)}</b> ${k === 'READY' ? btn('complete', r.id + '|' + i.id, 'Отметить выполненным') : ''}
+        return `<h4>${ST[k][0]} (${L.length})</h4>` + L.map(i => `<div class=op>${ST[k][1]} <b>${esc(i.name)}</b> ${i.scope ? '<span class=hint>— ' + i.scope.map(id => esc((o.surfaces.find(x => x.id === id) || {}).name)).join(', ') + '</span>' : ''} ${k === 'READY' ? btn('complete', r.id + '|' + i.id, 'Отметить выполненным') : ''}
           ${k !== 'DONE' ? techPick(r.id, i.id) : ''}
           ${i.reasons.map(x => `<div class=warn>${esc(x)}</div>`).join('')}<div class=hint>Почему в плане: ${esc(i.why.join('; '))}</div></div>`).join(''); }).join('');
       return `<div class=card><h3>${esc(r.name)}</h3>
-        <div><b>Что нужно получить:</b> ${o.goals.filter(g => g.target === r.id || o.surfaces.some(x => x.id === g.target && x.roomId === r.id)).map(g => esc((lib.goalNames || {})[g.result] || g.result)).join(', ') || '<i class=hint>не задано</i>'}</div>
+        <div><b>Что нужно получить</b> <span class=hint>(цель на конкретную стену/поверхность — процесс пойдёт только на неё)</span></div>${o.goals.map((g, gi) => [g, gi]).filter(([g]) => g.target === r.id || o.surfaces.some(x => x.id === g.target && x.roomId === r.id)).map(([g, gi]) => `<div class=mat>${sel('object.goals.' + gi + '.result', g.result, Object.entries(lib.goalNames || {}))} → ${sel('object.goals.' + gi + '.target', g.target, [[r.id, 'всё помещение']].concat(o.surfaces.filter(x => x.roomId === r.id && !x.orphan).map(x => [x.id, x.name])))} ${btn('del', 'object.goals.' + gi, '✕')}</div>`).join('') || '<i class=hint>не задано</i>'}${btn('goal-add', r.id, '＋ Цель')}
         ${P.questions.length ? '<h4>Нужно уточнить</h4>' + P.questions.map(q => `<div class=warn>? ${esc(q.text)} <i class=hint>(${esc(q.why)})</i></div>`).join('') : ''}
         ${P.notes.map(n => `<div class=warn>${n.kind === 'WARN' ? '⚠' : '💡'} ${esc(n.text)} <i class=hint>— ${esc(n.because)}</i></div>`).join('')}
         ${groups}
-        <h4>Текущее состояние</h4>${kinds.map(k => o.surfaces.filter(x => x.roomId === r.id && x.kind === k).map(sf => `<div class=op><b>${esc(sf.name)}</b> ${(lib.layers[k] || []).map(([ly, lb]) => `<span style="white-space:nowrap">${esc(lb)}: <select data-a=state data-p="${sf.id}|${ly}">${TRI_OPTS.map(([v, t]) => `<option value=${v} ${SM.model.getState(o, sf.id, ly) === v ? 'selected' : ''}>${t}</option>`).join('')}</select></span>`).join(' ')}</div>`).join('')).join('')}</div>`; }).join('');
+        <h4>Текущее состояние</h4>${kinds.map(k => o.surfaces.filter(x => x.roomId === r.id && x.kind === k && !x.orphan).map(sf => `<div class=op><b>${esc(sf.name)}</b> ${(lib.layers[k] || []).map(([ly, lb]) => `<span style="white-space:nowrap">${esc(lb)}: <select data-a=state data-p="${sf.id}|${ly}">${TRI_OPTS.map(([v, t]) => `<option value=${v} ${SM.model.getState(o, sf.id, ly) === v ? 'selected' : ''}>${t}</option>`).join('')}</select></span>`).join(' ')}</div>`).join('')).join('')}</div>`; }).join('');
   }
   const KINDS = [['floor', 'пол'], ['wall', 'стены'], ['ceiling', 'потолок'], ['box', 'короб']];
   /* Паузы между процессами: ввод вручную; текст справочника («что до», «защита») — только подсказка (D27, D32). */
@@ -241,6 +241,7 @@
   const A = {
     tab(p) { tab = p; }, del(p) { const k = p.split('.'), i = +k.pop(), arr = get(k.join('.')); const x = arr[i]; arr.splice(i, 1); if (k.join('.') === 'object.geometry.openings' || x === undefined) return; },
     add(p, el) { get(p).push(NEW[el.dataset.k]()); },
+    'goal-add'(rid) { const first = Object.keys(S.library.goalNames || {})[0]; if (first) S.object.goals.push({id: uid(), target: rid, result: first, params: {}}); },
     'wall-add'(p) { const g = S.object.geometry, r = g.rooms[+p], w = {id: uid(), name: 'Стена ' + (r.wallIds.length + 1), len: null, turn: 90, material: ''}; g.walls.push(w); r.wallIds.push(w.id); },
     'wall-del'(p) { const [ri, i] = p.split('.').map(Number), g = S.object.geometry, r = g.rooms[ri], id = r.wallIds[i]; r.wallIds.splice(i, 1); if (!g.rooms.some(x => x.wallIds.includes(id))) g.walls = g.walls.filter(w => w.id !== id); },
     'open-add'(p) { const g = S.object.geometry; g.openings.push({id: uid(), roomId: g.rooms[+p].id, wallId: null, kind: 'дверь', w: null, h: null}); },

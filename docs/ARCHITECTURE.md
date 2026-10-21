@@ -18,7 +18,7 @@
 |---|---|---|
 | `core.js` | ✅ | `uid`, `TRI` (YES/NO/UNKNOWN/NA), `isUnknown`, формулы: `parse`→AST, `evalAst`, `evalExpr`, `explain`; `packs` (упаковки) |
 | `geometry.js` | ✅ (ядро) | `SM.geo.deriveRoom`, `polygon`, `validate` (единый валидатор геометрии, D35): помещение = замкнутый контур из N стен. Контракт с CAD-модулем — `docs/CAD_CONTRACT.md` |
-| `model.js` | ✅ (ядро) | `newObject`, `getState/setState` (по умолчанию UNKNOWN), `addObservation`, `addGoal`, `derive`, `migrate` (`schemaVersion`, неизвестные поля сохраняются, схема из будущего — отказ) |
+| `model.js` | ✅ (ядро) | `newObject`, `getState/setState` (по умолчанию UNKNOWN), `addObservation`, `addGoal`, `derive`, `syncSurfaces` (поверхности из геометрии, D36), `migrate` (`schemaVersion`, неизвестные поля сохраняются, схема из будущего — отказ) |
 | `seeds.js` | ✅ | `SM.seeds.bathroom()` — тестовая ванная из ТЗ как данные |
 | `tech.js` | ⏳ Фаза 3–4 | Process, Technology, Operation, граф связей, эффекты |
 | `rules.js` | ✅ (срез) | `SM.rules.evalCond` (T/F/U), `plan(obj, lib, roomId)` → процессы со статусами, объяснения, вопросы; `complete()` применяет эффекты. Библиотека процессов и правил — данные в `S.library` (демо: `SM.seeds.library()`) |
