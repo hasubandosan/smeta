@@ -29,6 +29,9 @@
       for (const x of L) { const v = R.evalCond(x, ctx, unk); if (v === (all ? F : T)) return v; if (v === U) r = U; } return r; }
     if (c.not) { const v = R.evalCond(c.not, ctx, unk); return v === T ? F : v === F ? T : U; }
     if (c.room) { const v = cmp(ctx.room[c.room.key], c.room.op, c.room.value); if (v === U) unk.push('помещение.' + c.room.key); return v; }
+    if (c.geo) { // числовые величины геометрии помещения: floor, ceiling, perimeter, wallArea, openingsArea, height; неизвестное → U
+      const key = c.geo.key; let v; if (key === 'height') v = ctx.room.height; else { ctx.derived = ctx.derived || SM.geo.deriveRoom(ctx.obj.geometry, ctx.room); v = ctx.derived[key]; }
+      const r = cmp(v, c.geo.op, c.geo.value); if (r === U) unk.push('геометрия.' + key); return r; }
     if (c.goal) return ctx.goals.some(g => g.result === c.goal) ? T : F;
     if (c.param) { const g = ctx.goals.find(x => x.result === c.param.goal); if (!g) return F;
       const v = cmp((g.params || {})[c.param.key], c.param.op, c.param.value); if (v === U) unk.push(c.param.key); return v; }
@@ -42,11 +45,12 @@
     throw new Error('неизвестное условие');
   };
 
-  // plan(obj, lib, roomId) -> {items:[{id,name,status,reasons,why,scope}], notes, questions}
+  // plan(obj, lib, roomId) -> {items:[{id,name,status,reasons,why,scope}], notes, questions, modifiers}
+  // modifiers — действия SET_VALUE / MODIFY_QUANTITY / MODIFY_COEFFICIENT сработавших правил; применяет смета (SM.est.compute) и показывает «почему». value:null = неизвестно → результат неизвестен.
   // scope: массив id поверхностей, на которые направлен процесс (цель указывает на конкретную поверхность), или null = все поверхности этого вида в помещении
   // status: DONE | READY | NEEDS_INFO | BLOCKED
   R.plan = (obj, lib, roomId) => {
-    const room = obj.geometry.rooms.find(r => r.id === roomId), ctx = mkCtx(obj, room), route = new Map(), forbid = new Map(), notes = [], questions = [];
+    const room = obj.geometry.rooms.find(r => r.id === roomId), ctx = mkCtx(obj, room), route = new Map(), forbid = new Map(), notes = [], questions = [], modifiers = [];
     const add = (pid, why) => { if (!route.has(pid)) route.set(pid, []); if (why && !route.get(pid).includes(why)) route.get(pid).push(why); };
     const scope = new Map(), addScope = (pid, ids) => { if (ids === null) scope.set(pid, null); else if (scope.get(pid) !== null) { const c = scope.get(pid) || new Set(); ids.forEach(x => c.add(x)); scope.set(pid, c); } };
     for (const g of ctx.goals) { const tgt = obj.surfaces.find(s => s.id === g.target);
@@ -60,6 +64,9 @@
         if (a.do === 'REQUIRE' || a.do === 'ADD_PROCESS') { add(a.process, a.because); addScope(a.process, null); }
         else if (a.do === 'FORBID') forbid.set(a.process, a.because);
         else if (a.do === 'RECOMMEND' || a.do === 'WARN') notes.push({kind: a.do, text: a.text, because: a.because});
+        else if (a.do === 'SET_VALUE' || a.do === 'MODIFY_QUANTITY' || a.do === 'MODIFY_COEFFICIENT') {
+          if (a.do === 'SET_VALUE' && !a.key) throw new Error('SET_VALUE: не указан key'); if (!('value' in a)) throw new Error(a.do + ': не указано value');
+          modifiers.push({do: a.do, rule: rule.id, process: a.process || null, key: a.key || null, matId: a.matId || null, mode: a.mode === 'add' ? 'add' : 'mul', value: a.value, because: a.because || rule.name || rule.id}); }
         else throw new Error('неизвестное действие ' + a.do);
       }
     }
@@ -90,7 +97,7 @@
     });
     const items = procs.map(p => { const sc = scope.get(p.id) || null, s = status(p, sc); if (s.question && !questions.some(q => q.text === s.question)) questions.push({text: s.question, why: p.name});
       return {id: p.id, name: p.name, surface: p.surface, status: s.status, reasons: s.reasons, why: route.get(p.id), scope: sc ? [...sc] : null}; });
-    return {roomId, items, notes, questions};
+    return {roomId, items, notes, questions, modifiers};
   };
 
   // Выполнить процесс: применить эффекты к состоянию. Только если процесс сейчас READY.
