@@ -3,7 +3,7 @@
 const {JSDOM}=require('jsdom'),fs=require('fs'),R=require('path').join(__dirname,'..')+'/';
 let html=fs.readFileSync(R+'index.html','utf8').replace(/<script src="[^"]+"><\/script>/g,'');
 const w=new JSDOM(html,{runScripts:'outside-only',url:'http://localhost/'}).window;w.alert=m=>{throw new Error(m)};
-for(const f of ['core','geometry','model','seeds','rules','ver','estimate','pauses','routes','exec','fact','storage','kb','norms','legacy','ui'])w.eval(fs.readFileSync(R+'js/'+f+'.js','utf8'));
+for(const f of ['core','geometry','model','seeds','rules','ver','estimate','pauses','routes','exec','fact','storage','kb','norms','legacy','libedit','ui'])w.eval(fs.readFileSync(R+'js/'+f+'.js','utf8'));
 const $=s=>w.document.querySelector(s),C=s=>$(s).click(),chg=(s,v)=>{const e=$(s);e.value=v;e.dispatchEvent(new w.Event('change',{bubbles:true}))};
 const tab=t=>C(`[data-a=tab][data-p=${t}]`);let ok=1;const A=(c,m)=>{console.log((c?'OK   ':'FAIL ')+m);if(!c)ok=0};
 A($('#main').textContent.includes('15,75'),'объект: пол 15,75');
@@ -58,4 +58,10 @@ tab('data');A($('#main').textContent.includes('Справочник знаний
  C('[data-a=acc-kb]');const pls=JSON.parse(w.localStorage.getItem('stroysmeta:model')).plan.filter(p=>p.techId===tid);A(pls.some(p=>p.accept&&p.accept.length===2&&p.accept[1].meas===true&&!p.accept[0].meas),'работы: пункты приёмки добавлены в работу, у допуска есть замер');
  A(!!$('[data-a=measure]')&&$('#main').textContent.includes('Просвет'),'работы: поле замера и пункты приёмки показаны');
  C('[data-a=acc-del]');A(JSON.parse(w.localStorage.getItem('stroysmeta:model')).plan.filter(p=>p.techId===tid).some(p=>p.accept&&p.accept.length===1),'работы: пункт приёмки можно убрать');
- process.exit(ok?0:1)})();
+ tab('lib');A($('#main').textContent.includes('Библиотека процессов и правил')&&$('#main').textContent.includes('ЕСЛИ'),'библиотека: правила читаются словами');
+C('[data-k=process]');A($('#main').textContent.includes('Новый процесс'),'библиотека: процесс добавлен');
+C('[data-k=rule]');A($('#main').textContent.includes('Новое правило'),'библиотека: правило добавлено');
+{const b=[...w.document.querySelectorAll('[data-a=lib-tog]')].find(x=>x.textContent.includes('Новое правило'));b.click();chg('[data-a=cond-type]','state');A($('#main').textContent.includes('= '),'библиотека: тип условия сменён');
+C('[data-k=action]');chg('[data-a=act-type]','MODIFY_QUANTITY');A($('#main').textContent.includes('почему'),'библиотека: действие добавлено и сменено');
+A($('#main').textContent.includes('Проверка библиотеки'),'библиотека: пустое действие даёт замечания проверки');}
+process.exit(ok?0:1)})();

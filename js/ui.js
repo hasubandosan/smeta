@@ -231,16 +231,76 @@
         ${sn.length ? '<table>' + sn.map((x, i) => [x, i]).reverse().map(([x, i]) => `<tr><td>${new Date(x.t).toLocaleString('ru-RU')}<td>${btn('restore-snap', i, 'Вернуть')}</tr>`).join('') + '</table>' : '<div class=hint>Появятся после первых изменений.</div>'}
         ${btn('snap-now', '', 'Сделать точку отката сейчас')}</div>`;
   }
-  const VIEWS = {object: viewObject, state: viewState, routes: viewRoutes, works: viewWorks, techs: viewTechs, materials: viewMaterials, estimate: viewEstimate, buy: viewBuy, kb: viewKb, data: viewData};
-  const TABS = [['object', 'Объект'], ['state', 'Состояние'], ['routes', 'Маршруты'], ['works', 'Работы'], ['techs', 'Технологии'], ['materials', 'Материалы'], ['estimate', 'Смета'], ['buy', 'Закупка'], ['kb', 'Справочник'], ['data', 'Данные']];
+  /* ===== Библиотека: редактор процессов, правил, целей и слоёв (логика — js/libedit.js) ===== */
+  const libOpen = new Set(), LX = SM.libedit, OPS = ['==', '!=', '>', '<', '>=', '<=', 'in'].map(x => [x, x]), SURF = Object.entries(LX.KIND_RU);
+  const goalOpts = () => [['', '— цель —']].concat(Object.entries(S.library.goalNames || {}));
+  const layerOpts = kind => [['', '— слой —']].concat((S.library.layers || {})[kind] || []);
+  const procOpts = empty => [['', empty || '— процесс —']].concat(S.library.processes.map(p => [p.id, p.name]));
+  const vinp = (path, v, list) => `<input data-a=set data-v=${list ? 'list' : 1} data-p="${path}" value="${esc(Array.isArray(v) ? v.join(', ') : v === null || v === undefined ? '' : String(v))}" placeholder="?" style="width:90px">`;
+  const TRI3 = [['YES', 'да'], ['NO', 'нет'], ['UNKNOWN', 'неизвестно'], ['NOT_APPLICABLE', 'не применимо']];
+  function condEd(path, c) {
+    const type = LX.condType(c), L = S.library;
+    let h = `<select data-a=cond-type data-p="${path}">${LX.COND_TYPES.map(([k, t]) => `<option value=${k} ${k === type ? 'selected' : ''}>${t}</option>`).join('')}</select> `;
+    if (type === 'all' || type === 'any') h += c[type].map((x, i) => `<div style="margin-left:14px">${condEd(path + '.' + type + '.' + i, x)} ${btn('del', path + '.' + type + '.' + i, '✕')}</div>`).join('') + btn('cond-add', path + '.' + type, '＋ условие');
+    else if (type === 'not') h += `<div style="margin-left:14px">${condEd(path + '.not', c.not)}</div>`;
+    else if (type === 'room') h += `${sel(path + '.room.key', c.room.key, LX.ROOM_KEYS)} ${sel(path + '.room.op', c.room.op, OPS)} ${vinp(path + '.room.value', c.room.value)}`;
+    else if (type === 'state') h += `${sel(path + '.state.kind', c.state.kind, SURF)} ${sel(path + '.state.layer', c.state.layer, layerOpts(c.state.kind))} = ${sel(path + '.state.is', c.state.is, TRI3)} ${sel(path + '.state.quant', c.state.quant || 'all', [['all', 'у всех поверхностей'], ['any', 'хотя бы у одной']])}`;
+    else if (type === 'goal') h += sel(path + '.goal', c.goal, goalOpts());
+    else if (type === 'param') h += `${sel(path + '.param.goal', c.param.goal, goalOpts())} параметр ${inp(path + '.param.key', c.param.key, {w: 110})} ${sel(path + '.param.op', c.param.op, OPS)} ${vinp(path + '.param.value', c.param.value)}`;
+    else if (type === 'geo') h += `${sel(path + '.geo.key', c.geo.key, LX.GEO_KEYS)} ${sel(path + '.geo.op', c.geo.op, OPS)} ${vinp(path + '.geo.value', c.geo.value)}`;
+    return h;
+  }
+  const optCond = (path, c, label) => `<div><b>${label}</b> ${c ? btn('lib-clear', path, '✕ убрать') + '<div style="margin-left:14px">' + condEd(path, c) + '</div>' : btn('lib-cond', path, '＋ задать условие')}</div>`;
+  function actEd(path, a) {
+    const DO = [['REQUIRE', 'потребовать процесс'], ['ADD_PROCESS', 'добавить процесс'], ['FORBID', 'запретить процесс'], ['RECOMMEND', 'рекомендовать'], ['WARN', 'предупредить'], ['SET_VALUE', 'задать параметр формул'], ['MODIFY_QUANTITY', 'изменить объём'], ['MODIFY_COEFFICIENT', 'изменить расход материала']];
+    let h = `<select data-a=act-type data-p="${path}">${DO.map(([k, t]) => `<option value=${k} ${k === a.do ? 'selected' : ''}>${t}</option>`).join('')}</select> `;
+    if (['REQUIRE', 'ADD_PROCESS', 'FORBID'].includes(a.do)) h += sel(path + '.process', a.process || '', procOpts());
+    if (['RECOMMEND', 'WARN'].includes(a.do)) h += inp(path + '.text', a.text, {w: 240, ph: 'текст'});
+    if (a.do === 'SET_VALUE') h += `${inp(path + '.key', a.key, {w: 90, ph: 'параметр'})} = ${vinp(path + '.value', a.value)} к ${sel(path + '.process', a.process || '', procOpts('всем работам помещения'))}`;
+    if (a.do === 'MODIFY_QUANTITY') h += `${sel(path + '.mode', a.mode || 'mul', [['mul', '×'], ['add', '+']])} ${vinp(path + '.value', a.value)} к ${sel(path + '.process', a.process || '', procOpts('всем работам помещения'))}`;
+    if (a.do === 'MODIFY_COEFFICIENT') h += `× ${vinp(path + '.value', a.value)} материал ${sel(path + '.matId', a.matId || '', [['', 'все']].concat(S.materials.map(m => [m.id, m.name])))} к ${sel(path + '.process', a.process || '', procOpts('всем работам помещения'))}`;
+    return h + ` <br><span class=hint>почему:</span> ${inp(path + '.because', a.because, {w: 320, ph: 'объяснение для пользователя'})}`;
+  }
+  function viewLib() {
+    const L = S.library, issues = LX.validate(L), T = (id, label) => btn('lib-tog', id, (libOpen.has(id) ? '▾ ' : '▸ ') + label);
+    const procs = L.processes.map((p, i) => { const P = 'library.processes.' + i, open = libOpen.has('p' + p.id);
+      return `<div class=card><h3>${T('p' + p.id, esc(p.name))} <span class=hint>${esc(LX.KIND_RU[p.surface] || p.surface)}</span></h3>` + (!open ? '' : `
+        <div>Название ${inp(P + '.name', p.name, {w: 280})} на поверхность ${sel(P + '.surface', p.surface, SURF)} ${btn('lib-del-proc', p.id, 'Удалить процесс')}</div>
+        <div><b>Сначала нужно выполнить:</b> ${L.processes.filter(x => x.id !== p.id).map(x => `<label style="white-space:nowrap"><input type=checkbox data-a=lib-after data-p="${p.id}|${x.id}" ${(p.after || []).includes(x.id) ? 'checked' : ''}> ${esc(x.name)}</label>`).join(' ') || '<i class=hint>других процессов нет</i>'}</div>
+        ${optCond(P + '.needed', p.needed, 'Нужен, только если (иначе пропускается как «не требуется»):')}${optCond(P + '.requires', p.requires, 'Можно выполнять, только если:')}
+        <div>Вопрос, если неизвестно: ${inp(P + '.ask', p.ask, {w: 320})}</div><div>Причина блокировки: ${inp(P + '.blockedText', p.blockedText, {w: 320})}</div>
+        <div><b>Что меняется в состоянии после выполнения:</b></div>${(p.effects || []).map((e, j) => `<div class=mat>${sel(`${P}.effects.${j}.op`, e.op, [['ADD', 'появляется'], ['REMOVE', 'убирается'], ['SET', 'становится']])} ${sel(`${P}.effects.${j}.layer`, e.layer, layerOpts(p.surface))} ${e.op === 'SET' ? sel(`${P}.effects.${j}.value`, e.value || 'YES', TRI3) : ''} ${btn('del', `${P}.effects.${j}`, '✕')}</div>`).join('')}${btn('add', P + '.effects', '＋ эффект', 'data-k=effect')}`) + '</div>'; }).join('');
+    const rules = (L.rules || []).map((r, i) => { const P = 'library.rules.' + i, open = libOpen.has('r' + r.id);
+      return `<div class=card><h3>${T('r' + r.id, esc(r.name || r.id))}</h3><div class=hint>${esc(LX.describeRule(r, L))}</div>` + (!open ? '' : `
+        <div>Название ${inp(P + '.name', r.name, {w: 280})} ${btn('del', P, 'Удалить правило')}</div><div><b>Если:</b> ${condEd(P + '.if', r.if)}</div>
+        <div>Если неизвестно — спросить: ${inp(P + '.ask', r.ask, {w: 320})}</div><div><b>То:</b></div>${(r.then || []).map((a, j) => `<div class=mat>${actEd(`${P}.then.${j}`, a)} ${btn('del', `${P}.then.${j}`, '✕')}</div>`).join('')}${btn('add', P + '.then', '＋ действие', 'data-k=action')}`) + '</div>'; }).join('');
+    const goals = Object.entries(L.goalNames || {}).map(([g, name]) => `<div class=op>${inp('library.goalNames.' + g, name, {w: 240})} ${btn('lib-del-goal', g, '✕')}<br>${L.processes.map(x => `<label style="white-space:nowrap"><input type=checkbox data-a=lib-gp data-p="${g}|${x.id}" ${(L.goals[g] || []).includes(x.id) ? 'checked' : ''}> ${esc(x.name)}</label>`).join(' ')}</div>`).join('');
+    const layers = Object.keys(L.layers || {}).map(k => `<div class=op><b>${esc(LX.KIND_RU[k] || k)}</b> ${(L.layers[k] || []).map((l, j) => `<span class=mat>${inp(`library.layers.${k}.${j}.1`, l[1], {w: 140})} <span class=hint>${esc(l[0])}</span> ${btn('del', 'library.layers.' + k + '.' + j, '✕')}</span>`).join(' ')} ${btn('layer-add', k, '＋ слой')}</div>`).join('');
+    return '<h2>Библиотека процессов и правил</h2><p class=hint>Здесь настраивается «движок»: какие процессы бывают, что нужно сделать сначала, какие правила добавляют работы, меняют объёмы и расход. Каждое правило читается как «ЕСЛИ … → …». Библиотека хранится в проекте.</p>'
+      + (issues.length ? `<div class=card><b>Проверка библиотеки</b>${issues.map(x => `<div class=warn>${x.level === 'error' ? '⛔' : '⚠'} ${esc(x.text)}</div>`).join('')}</div>` : '<div class=hint>✓ Проверка библиотеки: замечаний нет</div>')
+      + '<h3>Процессы</h3>' + procs + btn('add', 'library.processes', '＋ Процесс', 'data-k=process') + '<h3>Правила</h3>' + rules + btn('add', 'library.rules', '＋ Правило', 'data-k=rule')
+      + '<h3>Цели и из каких процессов они состоят</h3>' + goals + btn('lib-goal-add', '', '＋ Цель') + '<h3>Слои состояния</h3><p class=hint>Слой — что можно знать о поверхности (например «Гидроизоляция»). Идентификатор слоя после создания не меняется.</p>' + layers;
+  }
+  const VIEWS = {lib: viewLib, object: viewObject, state: viewState, routes: viewRoutes, works: viewWorks, techs: viewTechs, materials: viewMaterials, estimate: viewEstimate, buy: viewBuy, kb: viewKb, data: viewData};
+  const TABS = [['object', 'Объект'], ['state', 'Состояние'], ['routes', 'Маршруты'], ['works', 'Работы'], ['techs', 'Технологии'], ['lib', 'Библиотека'], ['materials', 'Материалы'], ['estimate', 'Смета'], ['buy', 'Закупка'], ['kb', 'Справочник'], ['data', 'Данные']];
   function render() { const y = scrollY; $('nav').innerHTML = TABS.map(([k, t]) => `<button class="${k === tab ? 'on' : ''}" data-a=tab data-p=${k}>${t}</button>`).join('') + '<span id=sync class=hint style="padding:8px;white-space:nowrap"></span>'; paintSync(); $('main').innerHTML = VIEWS[tab](); scrollTo(0, y); }
   const NEW = {tech: () => ({id: uid(), name: 'Новая технология', params: [], ops: []}), op: () => ({id: uid(), name: '', unit: 'м2', price: null, qty: '', mats: []}), mat: () => ({id: uid(), matId: '', rate: ''}),
     route: () => ({id: uid(), name: 'Новый маршрут', roomId: S.object.geometry.rooms[0] ? S.object.geometry.rooms[0].id : '', steps: [], assume: []}), rstep: () => ({processId: '', techId: ''}), rassume: () => ({kind: 'floor', layer: '', value: 'YES'}),
     note: () => ({id: uid(), cat: 'accept', text: ''}), pause: () => ({id: uid(), beforeId: '', afterId: '', minDays: null, maxDays: null, note: ''}),
+    process: () => ({id: uid(), name: 'Новый процесс', surface: 'floor', after: [], effects: []}), rule: () => ({id: uid(), name: 'Новое правило', if: {all: []}, then: []}),
+    effect: () => ({op: 'ADD', layer: ''}), action: () => ({do: 'WARN', text: '', because: ''}),
     param: () => ({key: '', def: null}), material: () => ({id: uid(), name: 'Новый материал', unit: 'кг', packQty: null, price: null})};
   const A = {
     tab(p) { tab = p; }, del(p) { const k = p.split('.'), i = +k.pop(), arr = get(k.join('.')); const x = arr[i]; arr.splice(i, 1); if (k.join('.') === 'object.geometry.openings' || x === undefined) return; },
     add(p, el) { get(p).push(NEW[el.dataset.k]()); },
+    'lib-tog'(id) { libOpen.has(id) ? libOpen.delete(id) : libOpen.add(id); },
+    'cond-add'(p) { get(p).push(LX.defaultCond('goal', S.library)); },
+    'lib-cond'(p) { LX.replaceAt(S, p, LX.defaultCond('state', S.library)); }, 'lib-clear'(p) { LX.deleteAt(S, p); },
+    'lib-del-proc'(id) { const u = LX.usage(S.library, S, id), tot = u.goals + u.after + u.rules + u.techs + u.plan;
+      if (tot && !confirm('Процесс используется: в целях ' + u.goals + ', в «сначала» ' + u.after + ', в правилах ' + u.rules + ', в технологиях ' + u.techs + ', в плане ' + u.plan + '. Ссылки в библиотеке будут убраны; технологии и план останутся, но потеряют связь с процессом. Удалить?')) return; LX.removeProcess(S.library, id); },
+    'lib-goal-add'() { const id = 'goal_' + uid().slice(0, 6); S.library.goalNames[id] = 'Новая цель'; S.library.goals[id] = []; },
+    'lib-del-goal'(g) { if (!confirm('Удалить цель из библиотеки? Цели объектов с этим результатом перестанут давать процессы.')) return; delete S.library.goalNames[g]; delete S.library.goals[g]; },
+    'layer-add'(kind) { const id = 'layer_' + uid().slice(0, 5); S.library.layers[kind].push([id, 'Новый слой']); },
     'goal-add'(rid) { const first = Object.keys(S.library.goalNames || {})[0]; if (first) S.object.goals.push({id: uid(), target: rid, result: first, params: {}}); },
     'wall-add'(p) { const g = S.object.geometry, r = g.rooms[+p], w = {id: uid(), name: 'Стена ' + (r.wallIds.length + 1), len: null, turn: 90, material: ''}; g.walls.push(w); r.wallIds.push(w.id); },
     'wall-del'(p) { const [ri, i] = p.split('.').map(Number), g = S.object.geometry, r = g.rooms[ri], id = r.wallIds[i]; r.wallIds.splice(i, 1); if (!g.rooms.some(x => x.wallIds.includes(id))) g.walls = g.walls.filter(w => w.id !== id); },
@@ -339,11 +399,16 @@
     t.value = ''; render(); });
   document.addEventListener('click', e => { const b = e.target.closest('button[data-a]'); if (!b) return; const a = A[b.dataset.a]; if (a) { a(b.dataset.p, b); if (!NOSAVE.has(b.dataset.a) && !b.dataset.a.startsWith('kb-')) save(); render(); } });
   document.addEventListener('change', e => { const t = e.target; if (t.dataset.a !== 'set') return; const k = t.dataset.p.split('.'), key = k.pop(), o = get(k.join('.') || '');
-    let v = t.value.trim(); if (t.dataset.n) { v = v === '' ? null : parseFloat(v.replace(',', '.')); if (v !== null && !isFinite(v)) v = null; }
+    let v = t.value.trim(); if (t.dataset.v) v = LX.parseValue(v, t.dataset.v === 'list'); else if (t.dataset.n) { v = v === '' ? null : parseFloat(v.replace(',', '.')); if (v !== null && !isFinite(v)) v = null; }
     if (k.length === 1 && k[0] === 'bought' || k[0] === 'bought') S.bought[key] = v; else o[key] = v; save(); render(); });
   document.addEventListener('change', e => { const t = e.target; if (t.dataset.a !== 'state') return; const [id, layer] = t.dataset.p.split('|'); SM.model.setState(S.object, id, layer, t.value); save(); render(); });
   document.addEventListener('change', e => { const t = e.target; if (t.dataset.a !== 'measure') return; const [id, nid] = t.dataset.p.split('|'); try { SM.exec.setMeasure(S.plan.find(x => x.id === id), nid, t.value); } catch (err) { alert(err.message); } save(); });
   document.addEventListener('change', e => { const t = e.target; if (t.dataset.a !== 'norm-ok') return; const [id, k] = t.dataset.p.split('|'); SM.norms.set(S, id, k, t.checked); save(); render(); });
   document.addEventListener('change', e => { const t = e.target; if (t.dataset.a !== 'check') return; const [id, nid] = t.dataset.p.split('|'); SM.exec.check(S.plan.find(x => x.id === id), nid, t.checked); save(); render(); });
+  document.addEventListener('change', e => { const t = e.target, a = t.dataset.a; if (!['cond-type', 'act-type', 'lib-after', 'lib-gp'].includes(a)) return; const L = S.library;
+    if (a === 'cond-type') LX.replaceAt(S, t.dataset.p, LX.defaultCond(t.value, L));
+    else if (a === 'act-type') { const x = get(t.dataset.p); x.do = t.value; if (['SET_VALUE', 'MODIFY_QUANTITY', 'MODIFY_COEFFICIENT'].includes(t.value) && !('value' in x)) x.value = null; if (t.value === 'SET_VALUE' && x.key === undefined) x.key = ''; }
+    else { const [a1, b1] = t.dataset.p.split('|'), arr = a === 'lib-after' ? (L.processes.find(p => p.id === a1).after = L.processes.find(p => p.id === a1).after || []) : (L.goals[a1] = L.goals[a1] || []); const i = arr.indexOf(b1); if (t.checked && i < 0) arr.push(b1); if (!t.checked && i >= 0) arr.splice(i, 1); }
+    save(); render(); });
   S = load(); SM.store.save(localStorage, S, {keepStamp: true}); render(); if (cfg().token) cloudCheck();
 })();
