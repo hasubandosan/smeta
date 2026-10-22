@@ -131,7 +131,7 @@
       return `<div class=card><h3>Сравнение: ${esc(room.name)}</h3><table><tr><th><th>${C.results.map(x => esc(x.route.name) + (x.route.id === C.best ? ' ✓ дешевле' : '')).join('<th>')}</tr>
         <tr><td>Работы, ₽<td class=n>${C.results.map(x => f2(x.work)).join('<td class=n>')}</tr><tr><td>Материалы, ₽<td class=n>${C.results.map(x => f2(x.mat)).join('<td class=n>')}</tr>
         <tr><td><b>Итого, ₽</b><td class=n>${C.results.map(x => '<b>' + f2(x.grand) + '</b>' + (x.incomplete ? ' ⚠' : '')).join('<td class=n>')}</tr>
-        <tr><td>Дальше можно<td>${C.results.map(x => esc(x.ready.join(', ') || '—')).join('<td>')}</tr><tr><td>Заблокировано процессов<td class=n>${C.results.map(x => x.blocked).join('<td class=n>')}</tr>
+        <tr><td>Дальше можно<td>${C.results.map(x => esc(x.ready.join(', ') || '—')).join('<td>')}</tr>${C.results.some(x => x.errors && x.errors.length) ? '<tr><td>Ошибки маршрута<td>' + C.results.map(x => esc((x.errors || []).join('; ') || '—')).join('<td>') + '</tr>' : ''}<tr><td>Заблокировано процессов<td class=n>${C.results.map(x => x.blocked).join('<td class=n>')}</tr>
         <tr><td>Паузы между шагами, дней<td class=n>${C.results.map(x => timeCell(x.time)).join('<td class=n>')}</tr></table>${C.results.map(x => x.time && x.time.warnings.length ? `<p class=warn>${esc(x.route.name)}: ${x.time.warnings.map(esc).join('; ')}</p>` : '').join('')}
         <p class=hint>Итог = шаги маршрута + остальные работы плана, которые после него ещё нужны. ⚠ — часть данных неизвестна, сравнивать цену нельзя. Время считается только по паузам (время самих работ не хранится); закупленное заранее не учитываем.</p></div>`; }).join('');
     return '<h2>Маршруты</h2><p class=hint>Маршрут — вариант решения одной задачи (например: оставить стяжку / отремонтировать / снести и залить новую). Сравнивается весь путь с последствиями, а не одна цена.</p>' + cmp + editor + btn('add', 'routes', '＋ Маршрут', 'data-k=route') + pauseCard();
@@ -251,6 +251,14 @@
     return h;
   }
   const optCond = (path, c, label) => `<div><b>${label}</b> ${c ? btn('lib-clear', path, '✕ убрать') + '<div style="margin-left:14px">' + condEd(path, c) + '</div>' : btn('lib-cond', path, '＋ задать условие')}</div>`;
+  const EFF = [['ADD', 'появляется (слой)'], ['REMOVE', 'убирается (слой)'], ['SET', 'становится (слой)'], ['CREATE_OPENING', 'создаётся проём на стене'], ['DESTROY_OPENING', 'убирается (закрывается) проём'], ['SET_WALL', 'меняется свойство стены'], ['SET_ROOM', 'меняется свойство помещения']];
+  function effEd(path, p, e) {
+    const type = e.geo || e.op; let h = `<select data-a=eff-type data-p="${path}">${EFF.map(([k, t]) => `<option value=${k} ${k === type ? 'selected' : ''}>${t}</option>`).join('')}</select> `;
+    if (!e.geo) return h + sel(path + '.layer', e.layer, layerOpts(p.surface)) + (e.op === 'SET' ? ' = ' + sel(path + '.value', e.value || 'YES', TRI3) : '');
+    if (e.geo === 'CREATE_OPENING') return h + `вид ${inp(path + '.kind', e.kind, {w: 80, ph: 'дверь'})} ширина ${vinp(path + '.w', e.w)} высота ${vinp(path + '.h', e.h)} <span class=hint>(пусто = неизвестно)</span>`;
+    if (e.geo === 'DESTROY_OPENING') return h + `вид ${inp(path + '.kind', e.kind, {w: 80, ph: 'любой'})}`;
+    return h + sel(path + '.key', e.key || '', [['', '— свойство —']].concat(e.geo === 'SET_WALL' ? [['len', 'длина, м'], ['height', 'высота, м'], ['thickness', 'толщина, м'], ['material', 'материал']] : [['height', 'высота, м'], ['type', 'тип']])) + ' = ' + vinp(path + '.value', e.value);
+  }
   function actEd(path, a) {
     const DO = [['REQUIRE', 'потребовать процесс'], ['ADD_PROCESS', 'добавить процесс'], ['FORBID', 'запретить процесс'], ['RECOMMEND', 'рекомендовать'], ['WARN', 'предупредить'], ['SET_VALUE', 'задать параметр формул'], ['MODIFY_QUANTITY', 'изменить объём'], ['MODIFY_COEFFICIENT', 'изменить расход материала']];
     let h = `<select data-a=act-type data-p="${path}">${DO.map(([k, t]) => `<option value=${k} ${k === a.do ? 'selected' : ''}>${t}</option>`).join('')}</select> `;
@@ -269,7 +277,7 @@
         <div><b>Сначала нужно выполнить:</b> ${L.processes.filter(x => x.id !== p.id).map(x => `<label style="white-space:nowrap"><input type=checkbox data-a=lib-after data-p="${p.id}|${x.id}" ${(p.after || []).includes(x.id) ? 'checked' : ''}> ${esc(x.name)}</label>`).join(' ') || '<i class=hint>других процессов нет</i>'}</div>
         ${optCond(P + '.needed', p.needed, 'Нужен, только если (иначе пропускается как «не требуется»):')}${optCond(P + '.requires', p.requires, 'Можно выполнять, только если:')}
         <div>Вопрос, если неизвестно: ${inp(P + '.ask', p.ask, {w: 320})}</div><div>Причина блокировки: ${inp(P + '.blockedText', p.blockedText, {w: 320})}</div>
-        <div><b>Что меняется в состоянии после выполнения:</b></div>${(p.effects || []).map((e, j) => `<div class=mat>${sel(`${P}.effects.${j}.op`, e.op, [['ADD', 'появляется'], ['REMOVE', 'убирается'], ['SET', 'становится']])} ${sel(`${P}.effects.${j}.layer`, e.layer, layerOpts(p.surface))} ${e.op === 'SET' ? sel(`${P}.effects.${j}.value`, e.value || 'YES', TRI3) : ''} ${btn('del', `${P}.effects.${j}`, '✕')}</div>`).join('')}${btn('add', P + '.effects', '＋ эффект', 'data-k=effect')}`) + '</div>'; }).join('');
+        <div><b>Что меняется после выполнения (состояние и геометрия):</b></div>${(p.effects || []).map((e, j) => `<div class=mat>${effEd(`${P}.effects.${j}`, p, e)} ${btn('del', `${P}.effects.${j}`, '✕')}</div>`).join('')}${btn('add', P + '.effects', '＋ эффект', 'data-k=effect')}`) + '</div>'; }).join('');
     const rules = (L.rules || []).map((r, i) => { const P = 'library.rules.' + i, open = libOpen.has('r' + r.id);
       return `<div class=card><h3>${T('r' + r.id, esc(r.name || r.id))}</h3><div class=hint>${esc(LX.describeRule(r, L))}</div>` + (!open ? '' : `
         <div>Название ${inp(P + '.name', r.name, {w: 280})} ${btn('del', P, 'Удалить правило')}</div><div><b>Если:</b> ${condEd(P + '.if', r.if)}</div>
@@ -405,7 +413,8 @@
   document.addEventListener('change', e => { const t = e.target; if (t.dataset.a !== 'measure') return; const [id, nid] = t.dataset.p.split('|'); try { SM.exec.setMeasure(S.plan.find(x => x.id === id), nid, t.value); } catch (err) { alert(err.message); } save(); });
   document.addEventListener('change', e => { const t = e.target; if (t.dataset.a !== 'norm-ok') return; const [id, k] = t.dataset.p.split('|'); SM.norms.set(S, id, k, t.checked); save(); render(); });
   document.addEventListener('change', e => { const t = e.target; if (t.dataset.a !== 'check') return; const [id, nid] = t.dataset.p.split('|'); SM.exec.check(S.plan.find(x => x.id === id), nid, t.checked); save(); render(); });
-  document.addEventListener('change', e => { const t = e.target, a = t.dataset.a; if (!['cond-type', 'act-type', 'lib-after', 'lib-gp'].includes(a)) return; const L = S.library;
+  document.addEventListener('change', e => { const t = e.target, a = t.dataset.a; if (!['cond-type', 'act-type', 'lib-after', 'lib-gp', 'eff-type'].includes(a)) return; const L = S.library;
+    if (a === 'eff-type') { const old = get(t.dataset.p), v = t.value, n = ['ADD', 'REMOVE', 'SET'].includes(v) ? {op: v, layer: old.layer || '', value: v === 'SET' ? 'YES' : undefined} : v === 'CREATE_OPENING' ? {geo: v, kind: 'дверь', w: null, h: null} : v === 'DESTROY_OPENING' ? {geo: v, kind: ''} : {geo: v, key: '', value: null}; if (n.value === undefined) delete n.value; LX.replaceAt(S, t.dataset.p, n); save(); render(); return; }
     if (a === 'cond-type') LX.replaceAt(S, t.dataset.p, LX.defaultCond(t.value, L));
     else if (a === 'act-type') { const x = get(t.dataset.p); x.do = t.value; if (['SET_VALUE', 'MODIFY_QUANTITY', 'MODIFY_COEFFICIENT'].includes(t.value) && !('value' in x)) x.value = null; if (t.value === 'SET_VALUE' && x.key === undefined) x.key = ''; }
     else { const [a1, b1] = t.dataset.p.split('|'), arr = a === 'lib-after' ? (L.processes.find(p => p.id === a1).after = L.processes.find(p => p.id === a1).after || []) : (L.goals[a1] = L.goals[a1] || []); const i = arr.indexOf(b1); if (t.checked && i < 0) arr.push(b1); if (!t.checked && i >= 0) arr.splice(i, 1); }

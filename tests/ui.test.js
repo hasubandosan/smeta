@@ -64,4 +64,5 @@ C('[data-k=rule]');A($('#main').textContent.includes('Новое правило'
 {const b=[...w.document.querySelectorAll('[data-a=lib-tog]')].find(x=>x.textContent.includes('Новое правило'));b.click();chg('[data-a=cond-type]','state');A($('#main').textContent.includes('= '),'библиотека: тип условия сменён');
 C('[data-k=action]');chg('[data-a=act-type]','MODIFY_QUANTITY');A($('#main').textContent.includes('почему'),'библиотека: действие добавлено и сменено');
 A($('#main').textContent.includes('Проверка библиотеки'),'библиотека: пустое действие даёт замечания проверки');}
+{const b=[...w.document.querySelectorAll('[data-a=lib-tog]')].find(x=>x.textContent.includes('Новый процесс'));b.click();C('[data-k=effect]');chg('[data-a=eff-type]','SET_WALL');A($('#main').textContent.includes('свойство'),'библиотека: эффект на геометрию (свойство стены)');}
 process.exit(ok?0:1)})();

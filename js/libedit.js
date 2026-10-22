@@ -44,7 +44,9 @@
     for (const p of P) { if (ids.has(p.id)) add('error', 'Повтор id процесса «' + p.name + '»'); ids.add(p.id); if (!p.name) add('warn', 'У процесса ' + p.id + ' нет названия');
       if (!layers[p.surface]) add('warn', 'Процесс «' + p.name + '»: вид поверхности «' + p.surface + '» не описан в слоях');
       for (const a of p.after || []) { if (a === p.id) add('error', 'Процесс «' + p.name + '» ждёт сам себя'); else if (!has(a)) add('error', 'Процесс «' + p.name + '»: «сначала» ссылается на несуществующий процесс'); }
-      for (const e of p.effects || []) { if (!e.layer) add('warn', 'Процесс «' + p.name + '»: у эффекта не выбран слой'); else if (!(layers[p.surface] || []).some(l => l[0] === e.layer)) add('warn', 'Процесс «' + p.name + '»: слой «' + e.layer + '» не описан для вида «' + p.surface + '»');
+      for (const e of p.effects || []) { if (e.geo) { if (!SM.rules.GEO_EFFECTS.includes(e.geo)) add('error', 'Процесс «' + p.name + '»: неизвестный эффект геометрии ' + e.geo); else if ((e.geo === 'SET_WALL' || e.geo === 'SET_ROOM') && !e.key) add('warn', 'Процесс «' + p.name + '»: у эффекта геометрии не выбрано свойство');
+          else if (e.geo === 'SET_WALL' && p.surface !== 'wall') add('warn', 'Процесс «' + p.name + '»: эффект на стены, а процесс не на стены — он применится ко всем стенам помещения'); continue; }
+        if (!e.layer) add('warn', 'Процесс «' + p.name + '»: у эффекта не выбран слой'); else if (!(layers[p.surface] || []).some(l => l[0] === e.layer)) add('warn', 'Процесс «' + p.name + '»: слой «' + e.layer + '» не описан для вида «' + p.surface + '»');
         if (e.op === 'SET' && !e.value) add('warn', 'Процесс «' + p.name + '»: у эффекта SET не задано значение'); }
       if (!(p.effects || []).length) add('warn', 'Процесс «' + p.name + '» ничего не меняет в состоянии (нет эффектов): он никогда не станет «Готово»'); }
     const state = {}; const cyc = id => { if (state[id] === 2) return false; if (state[id] === 1) return true; state[id] = 1; const p = P.find(x => x.id === id); const r = p && (p.after || []).some(a => has(a) && cyc(a)); state[id] = 2; return !!r; };

@@ -1,6 +1,6 @@
 /* Правила, эффекты, «что можно делать сейчас». Без DOM. Всё поведение — в данных библиотеки (lib), не в коде.
    lib = {layers:{kind:[[layer,подпись]]}, goalNames:{result:имя}, goals:{result:[processId]},
-          processes:[{id,name,surface:kind,after?:[id],needed?:cond,requires?:cond,ask?:текст,blockedText?,effects:[{op:'ADD'|'REMOVE'|'SET',layer,value?}]}],
+          processes:[{id,name,surface:kind,after?:[id],needed?:cond,requires?:cond,ask?:текст,blockedText?,effects:[{op:'ADD'|'REMOVE'|'SET',layer,value?} | {geo:'CREATE_OPENING',kind?,w?,h?} | {geo:'DESTROY_OPENING',kind?} | {geo:'SET_WALL',key:len|height|thickness|material,value} | {geo:'SET_ROOM',key:height|type,value}]}],
           rules:[{id,name,if:cond,ask?:текст,then:[{do:'REQUIRE'|'ADD_PROCESS'|'FORBID'|'RECOMMEND'|'WARN',process?,text?,because}]}]}
    cond = {all:[]}|{any:[]}|{not:c}|{room:{key,op,value}}|{state:{kind,layer,is|in,quant:'all'|'any'}}|{goal:result}|{param:{goal,key,op,value}}
    Логика трёхзначная: T / F / U (неизвестно). UNKNOWN != NO. */
@@ -20,6 +20,29 @@
   const effVal = e => (e.op === 'ADD' ? 'YES' : e.op === 'REMOVE' ? 'NO' : e.value);
 
   R.effVal = effVal;
+  const WALL_KEYS = ['len', 'height', 'thickness', 'material'], ROOM_KEYS = ['height', 'type'];
+  R.GEO_EFFECTS = ['CREATE_OPENING', 'DESTROY_OPENING', 'SET_WALL', 'SET_ROOM'];
+  // Стены (записи геометрии), на которые направлен процесс: поверхности «стена» помещения в области процесса (для процесса не на стены — все стены помещения)
+  const targetWalls = (obj, roomId, p, scopeIds) => obj.surfaces.filter(s => s.roomId === roomId && s.kind === 'wall' && !s.orphan && (p.surface !== 'wall' || !scopeIds || scopeIds.includes(s.id)))
+    .map(s => obj.geometry.walls.find(w => w.id === s.wallId)).filter(Boolean);
+  // Применить эффекты процесса к объекту (состояние слоёв и геометрия). Атомарно: при ошибке или недопустимой геометрии объект не меняется, бросается понятная ошибка.
+  R.applyEffects = (obj, roomId, p, scopeIds) => {
+    const before = new Set(SM.geo.validate(obj.geometry).issues.filter(x => x.level === 'error').map(x => x.code + '|' + x.id));   // старые ошибки геометрии (например, исходный зазор контура) не мешают; отказ — только за НОВЫЕ ошибки от этого действия
+    const o = JSON.parse(JSON.stringify(obj)), g = o.geometry, room = g.rooms.find(r => r.id === roomId), walls = targetWalls(o, roomId, p, scopeIds), ids = new Set(walls.map(w => w.id));
+    const surf = o.surfaces.filter(x => x.roomId === roomId && x.kind === p.surface && !x.orphan && (!scopeIds || scopeIds.includes(x.id)));
+    for (const e of p.effects) {
+      if (!e.geo) { surf.forEach(s => M.setState(o, s.id, e.layer, effVal(e))); continue; }
+      if (e.geo === 'CREATE_OPENING') { for (const w of walls) if (!g.openings.some(x => x.wallId === w.id && (!e.kind || x.kind === e.kind))) g.openings.push({id: SM.uid(), wallId: w.id, roomId, kind: e.kind || 'проём', w: SM.isUnknown(e.w) ? null : +e.w, h: SM.isUnknown(e.h) ? null : +e.h}); }
+      else if (e.geo === 'DESTROY_OPENING') g.openings = g.openings.filter(x => !(ids.has(x.wallId) && (!e.kind || x.kind === e.kind)));
+      else if (e.geo === 'SET_WALL') { if (!WALL_KEYS.includes(e.key)) throw new Error('SET_WALL: свойство «' + e.key + '» менять нельзя'); walls.forEach(w => { w[e.key] = SM.isUnknown(e.value) ? null : e.value; }); }
+      else if (e.geo === 'SET_ROOM') { if (!ROOM_KEYS.includes(e.key)) throw new Error('SET_ROOM: свойство «' + e.key + '» менять нельзя'); room[e.key] = SM.isUnknown(e.value) ? null : e.value; }
+      else throw new Error('неизвестный эффект геометрии ' + e.geo);
+    }
+    M.syncSurfaces(o); const v = SM.geo.validate(g);
+    const bad = v.issues.filter(x => x.level === 'error' && !before.has(x.code + '|' + x.id));
+    if (bad.length) throw new Error('Геометрия после этого действия была бы некорректной: ' + bad.map(x => x.text).join('; '));
+    Object.assign(obj, o); return obj;
+  };
 
   // evalCond(cond, ctx, unk) -> 'T'|'F'|'U'; в unk попадают названия неизвестного
   R.evalCond = (c, ctx, unk) => {
@@ -74,7 +97,12 @@
     const byId = id => procs.find(p => p.id === id);
     const key = (p, sc) => p.id + '|' + (sc ? [...sc].sort().join(',') : '*');
     const withScope = (sc, kind, fn) => { const a = ctx.scope, b = ctx.scopeKind; ctx.scope = sc; ctx.scopeKind = kind; try { return fn(); } finally { ctx.scope = a; ctx.scopeKind = b; } };
-    const effDone = (p) => p.effects.every(e => R.evalCond({state: {kind: p.surface, layer: e.layer, is: effVal(e)}}, ctx) === T);
+    // Эффект уже достигнут? Для геометрии: SET_* — значение известно и равно; CREATE_OPENING — на каждой стене есть проём этого вида; DESTROY_OPENING — такого проёма нет.
+    const geoDone = (p, e) => { const g = obj.geometry, ws = surfaces(ctx, 'wall').map(s => g.walls.find(w => w.id === s.wallId)).filter(Boolean), eq = (a, b) => !SM.isUnknown(a) && a == b;
+      if (e.geo === 'SET_ROOM') return eq(room[e.key], e.value); if (!ws.length) return false;
+      if (e.geo === 'SET_WALL') return ws.every(w => eq(w[e.key], e.value));
+      const has = w => g.openings.some(x => x.wallId === w.id && (!e.kind || x.kind === e.kind)); return e.geo === 'CREATE_OPENING' ? ws.every(has) : ws.every(w => !has(w)); };
+    const effDone = (p) => p.effects.every(e => e.geo ? geoDone(p, e) : R.evalCond({state: {kind: p.surface, layer: e.layer, is: effVal(e)}}, ctx) === T);
     // status(p, sc): sc — область процесса. Предшествующий процесс того же вида проверяется на ТОЙ ЖЕ области (плитка на стене 1 ждёт подготовку стены 1, а не всех), другого вида — на своей.
     const status = (p, sc) => withScope(sc || null, p.surface, () => {
       const mk = key(p, sc); if (memo.has(mk)) return memo.get(mk);
@@ -105,7 +133,7 @@
     const it = R.plan(obj, lib, roomId).items.find(x => x.id === pid);
     if (!it || it.status !== 'READY') throw new Error('Сейчас нельзя: ' + (it ? (it.reasons.join('; ') || it.status) : 'процесса нет в маршруте'));
     const p = lib.processes.find(x => x.id === pid);
-    for (const s of obj.surfaces.filter(x => x.roomId === roomId && x.kind === p.surface && !x.orphan && (!it.scope || it.scope.includes(x.id)))) for (const e of p.effects) M.setState(obj, s.id, e.layer, effVal(e));
+    R.applyEffects(obj, roomId, p, it.scope);
     return obj;
   };
 })(typeof window !== 'undefined' ? window : globalThis);

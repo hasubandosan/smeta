@@ -8,16 +8,16 @@
   const apply = (o, roomId, kind, layer, value) => o.surfaces.filter(s => s.roomId === roomId && s.kind === kind && !s.orphan).forEach(s => M.setState(o, s.id, layer, value));
 
   R.compare = (S, route) => {
-    const lib = S.library, rid = route.roomId, clone = JSON.parse(JSON.stringify(S.object)), items = [];
+    const lib = S.library, rid = route.roomId, clone = JSON.parse(JSON.stringify(S.object)), items = [], errors = [];
     (route.steps || []).forEach((st, i) => { const p = lib.processes.find(x => x.id === st.processId); if (!p) return;
-      for (const e of p.effects) apply(clone, rid, p.surface, e.layer, SM.rules.effVal(e));
+      try { SM.rules.applyEffects(clone, rid, p, null); } catch (e) { errors.push('«' + p.name + '»: ' + e.message); }
       if (st.techId) items.push({id: 'route:' + i, techId: st.techId, roomId: rid, processId: st.processId, values: {}}); });
     for (const a of route.assume || []) if (a.layer) apply(clone, rid, a.kind, a.layer, a.value);
     const after = SM.rules.plan(clone, lib, rid), status = new Map(after.items.map(i => [i.id, i.status]));
     const covered = new Set((route.steps || []).map(s => s.processId));
     const down = S.plan.filter(p => p.roomId === rid && !(p.processId && (covered.has(p.processId) || status.get(p.processId) === 'DONE')));
     const E = SM.est.compute(Object.assign({}, S, {plan: items.concat(down)}));
-    return {route, work: E.work, mat: E.mat, grand: E.grand, incomplete: E.incomplete, steps: (route.steps || []).length,
+    return {route, work: E.work, mat: E.mat, grand: E.grand, incomplete: E.incomplete || errors.length > 0, errors, steps: (route.steps || []).length,
       ready: after.items.filter(i => i.status === 'READY').map(i => i.name), blocked: after.items.filter(i => i.status === 'BLOCKED').length,
       questions: after.questions.length, time: SM.pauses ? SM.pauses.schedule(S, route.steps) : null};
   };
