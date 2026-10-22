@@ -38,7 +38,8 @@
 | `legacy.js` | ✅ | `convert(старый S)` → технологии и материалы (ветвление → отдельные технологии, композиты раскрываются, без дублей по `legacyId`); `objects` (список объектов старого); `importObject` (помещения → геометрия, этапы → план по помещениям, доп. позиции, проценты, отчёт; v0.17) |
 | `ui.js` + `index.html` | ✅ (срез) | новый интерфейс на новой модели; данные в `stroysmeta:model` (рядом копия `:backup`). Старый `old.html` не тронут |
 | `storage.js` | ✅ | `SM.store`: load/save (`stroysmeta:model`, копия `:backup`), `normalize/parse` (миграция, отказ для схемы из будущего), точки отката (`:snaps`), `replace` (подмена данных только через точку отката), облако Gist (`cloud(ls, fetch)`: `check/push/adopt`, чистая `decide`), `sheets` для Excel. `ls` и `fetch` передаются снаружи — тестируется в Node |
-| `planner.js` | ⏳ Фаза 10 | SVG 2D-планировщик |
+| `planner.js`, `planner-ui.js` | ✅ (CAD-бот) | 2D-планировщик (`SM.planner`), контракт `docs/CAD_CONTRACT.md`; подключён во вкладке «План» (v0.29) |
+| `geolink.js` | ✅ | `SM.geolink`: `apply(S, geometry)` — принять геометрию из планировщика (validate → атомарная замена `S.object.geometry` → `syncSurfaces`; отказ, если убирается помещение с данными), `roomUse` (чем занято помещение), `same`. Точку отката и сохранение делает UI (D41) |
 
 ## Геометрия (принято)
 `model = {walls:[{id,len,turn?,height?,name?,material?}], openings:[{id,wallId,kind,w,h}], rooms:[{id,name,height,wallIds:[…]}]}`.

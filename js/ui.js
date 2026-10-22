@@ -306,9 +306,27 @@
       + '<h3>Процессы</h3>' + procs + btn('add', 'library.processes', '＋ Процесс', 'data-k=process') + '<h3>Правила</h3>' + rules + btn('add', 'library.rules', '＋ Правило', 'data-k=rule')
       + '<h3>Цели и из каких процессов они состоят</h3>' + goals + btn('lib-goal-add', '', '＋ Цель') + '<h3>Слои состояния</h3><p class=hint>Слой — что можно знать о поверхности (например «Гидроизоляция»). Идентификатор слоя после создания не меняется.</p>' + layers;
   }
-  const VIEWS = {lib: viewLib, object: viewObject, state: viewState, routes: viewRoutes, works: viewWorks, techs: viewTechs, materials: viewMaterials, estimate: viewEstimate, buy: viewBuy, kb: viewKb, data: viewData};
-  const TABS = [['object', 'Объект'], ['state', 'Состояние'], ['routes', 'Маршруты'], ['works', 'Работы'], ['techs', 'Технологии'], ['lib', 'Библиотека'], ['materials', 'Материалы'], ['estimate', 'Смета'], ['buy', 'Закупка'], ['kb', 'Справочник'], ['data', 'Данные']];
-  function render() { const y = scrollY; $('nav').innerHTML = TABS.map(([k, t]) => `<button class="${k === tab ? 'on' : ''}" data-a=tab data-p=${k}>${t}</button>`).join('') + '<span id=sync class=hint style="padding:8px;white-space:nowrap"></span>'; paintSync(); $('main').innerHTML = VIEWS[tab]() + obsList(); scrollTo(0, y); }
+  const VIEWS = {lib: viewLib, plan: viewPlan, object: viewObject, state: viewState, routes: viewRoutes, works: viewWorks, techs: viewTechs, materials: viewMaterials, estimate: viewEstimate, buy: viewBuy, kb: viewKb, data: viewData};
+  const TABS = [['object', 'Объект'], ['plan', 'План'], ['state', 'Состояние'], ['routes', 'Маршруты'], ['works', 'Работы'], ['techs', 'Технологии'], ['lib', 'Библиотека'], ['materials', 'Материалы'], ['estimate', 'Смета'], ['buy', 'Закупка'], ['kb', 'Справочник'], ['data', 'Данные']];
+  /* ===== План: 2D-планировщик (SM.planner, CAD_CONTRACT §5–6). Источник истины — S.object.geometry; планировщик только правит её через onChange (D41). ===== */
+  let planH = null;
+  const planNote = (t, warn) => { const e = $('planmsg'); if (e) { e.textContent = t; e.className = warn ? 'warn' : 'hint'; } };
+  function viewPlan() {
+    return '<h2>План</h2><p class=hint>Чертёж правит данные объекта (стены, проёмы, помещения): после каждой правки поверхности и смета пересчитываются сами. Ctrl+Z / ↶ — отмена на плане, пока вкладка открыта. Точка отката сохраняется не чаще раза в 5 минут (вкладка «Данные»).</p><div id=planhost style="height:68vh;min-height:360px;border:1px solid #cfd6df;border-radius:6px;overflow:hidden"></div><div id=planmsg class=hint></div>';
+  }
+  function mountPlan() {
+    const host = $('planhost'); if (!host || !SM.planner || !SM.planner.mount) return planNote('Модуль планировщика не загружен.', true);
+    let busy = false;
+    planH = SM.planner.mount(host, {geometry: S.object.geometry, readOnly: false, onChange(g, meta) {
+      if (busy || SM.geolink.same(S, g)) return; busy = true;
+      try { SM.store.snap(localStorage, S, false); const r = SM.geolink.apply(S, g);          // точка отката (не чаще раза в 5 мин) → проверка → применить → поверхности
+        if (!r.ok) { planNote('⛔ ' + r.message + ' Правка отменена.', true); const h = planH; setTimeout(() => { if (h && h === planH) { if (h.canUndo()) h.undo(); else h.setGeometry(S.object.geometry); } }, 0); return false; }
+        save(); const sf = r.surfaces; planNote('✓ Сохранено' + (r.removedRooms.length ? '; убрано помещений: ' + r.removedRooms.length : '') + (sf.orphaned.length ? '; стен с данными убрано из контура: ' + sf.orphaned.length + ' (данные сохранены, в расчёты не входят)' : '') + '.', false); }
+      finally { busy = false; } }});
+    if (!SM.geo.validate(S.object.geometry).ok) planNote('⚠ В данных объекта уже есть ошибки геометрии (см. вкладку «Объект»); пока они не исправлены, план может не принимать правки. Исправьте длины и углы.', true);
+  }
+  SM.app = {plan: () => planH};
+  function render() { const y = scrollY; $('nav').innerHTML = TABS.map(([k, t]) => `<button class="${k === tab ? 'on' : ''}" data-a=tab data-p=${k}>${t}</button>`).join('') + '<span id=sync class=hint style="padding:8px;white-space:nowrap"></span>'; paintSync(); if (planH) { planH.destroy(); planH = null; } $('main').innerHTML = VIEWS[tab]() + obsList(); if (tab === 'plan') mountPlan(); scrollTo(0, y); }
   const NEW = {tech: () => ({id: uid(), name: 'Новая технология', params: [], ops: []}), op: () => ({id: uid(), name: '', unit: 'м2', price: null, qty: '', mats: []}), mat: () => ({id: uid(), matId: '', rate: ''}),
     route: () => ({id: uid(), name: 'Новый маршрут', roomId: S.object.geometry.rooms[0] ? S.object.geometry.rooms[0].id : '', steps: [], assume: []}), rstep: () => ({processId: '', techId: ''}), rassume: () => ({kind: 'floor', layer: '', value: 'YES'}),
     note: () => ({id: uid(), cat: 'accept', text: ''}), pause: () => ({id: uid(), beforeId: '', afterId: '', minDays: null, maxDays: null, note: ''}),

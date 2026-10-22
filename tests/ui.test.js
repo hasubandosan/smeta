@@ -3,7 +3,7 @@
 const {JSDOM}=require('jsdom'),fs=require('fs'),R=require('path').join(__dirname,'..')+'/';
 let html=fs.readFileSync(R+'index.html','utf8').replace(/<script src="[^"]+"><\/script>/g,'');
 const w=new JSDOM(html,{runScripts:'outside-only',url:'http://localhost/'}).window;w.alert=m=>{throw new Error(m)};
-for(const f of ['core','geometry','model','seeds','rules','ver','estimate','pauses','routes','exec','fact','storage','kb','norms','legacy','libedit','ui'])w.eval(fs.readFileSync(R+'js/'+f+'.js','utf8'));
+for(const f of ['core','geometry','model','seeds','planner','planner-ui','geolink','rules','ver','estimate','pauses','routes','exec','fact','storage','kb','norms','legacy','libedit','ui'])w.eval(fs.readFileSync(R+'js/'+f+'.js','utf8'));
 const $=s=>w.document.querySelector(s),C=s=>$(s).click(),chg=(s,v)=>{const e=$(s);e.value=v;e.dispatchEvent(new w.Event('change',{bubbles:true}))};
 const tab=t=>C(`[data-a=tab][data-p=${t}]`);let ok=1;const A=(c,m)=>{console.log((c?'OK   ':'FAIL ')+m);if(!c)ok=0};
 A($('#main').textContent.includes('15,75'),'объект: пол 15,75');
@@ -77,4 +77,19 @@ chg(`[data-a=obs-present][data-p="${i}"]`,'yes');A(!('present' in M().observatio
 chg(`[data-p="object.observations.${i}.target"]`,M().geometry.rooms[0].id);A(M().observations[i].target===M().geometry.rooms[0].id,'наблюдение: привязка к помещению');
 tab('lib');chg('[data-a=cond-type]','obs');A($('#main').textContent.includes('наблюдение')&&$('#obskinds').innerHTML.includes('old_screed'),'библиотека: условие «наблюдение», подсказка видов');
 tab('state');C(`[data-a=del][data-p="object.observations.${i}"]`);A(M().observations.length===n0,'наблюдение: удалено');}
+{const M=()=>JSON.parse(w.localStorage.getItem('stroysmeta:model')).object,tick=()=>new Promise(r=>setTimeout(r,30));
+tab('plan');A($('#planmsg').textContent.includes('ошибки геометрии'),'план: при незамкнутом контуре показано предупреждение');tab('object');chg('[data-p="object.geometry.walls.0.len"]',String(w.SM.seeds.bathroom().geometry.walls[0].len));tab('plan');const h=w.SM.app.plan();A(!!h&&$('#planhost')&&$('#planhost').querySelector('svg'),'план: планировщик подключён во вкладке');
+const rid=M().geometry.rooms[0].id,sf0=M().surfaces.length;
+const r1=h.edit('setRoomProps',rid,{height:2.9});A(r1.ok&&M().geometry.rooms[0].height===2.9,'план: правка помещения сохранилась в проекте');
+A($('#planmsg').textContent.includes('Сохранено'),'план: сообщение «Сохранено»');
+h.edit('setRoomProps',rid,{name:'Санузел'});tab('object');A([...w.document.querySelectorAll('#main input')].some(i=>i.value==='Санузел'),'план: имя с чертежа видно в «Объекте»');
+tab('plan');const h2=w.SM.app.plan(),ra=h2.edit('addRoomRect',{w:2,h:2}),nid=ra.created&&ra.created.roomId;
+A(ra.ok&&M().geometry.rooms.some(x=>x.id===nid)&&M().surfaces.filter(s=>s.roomId===nid).length>=3,'план: новая комната попала в проект вместе с поверхностями');
+tab('state');C(`[data-a=goal-add][data-p="${nid}"]`);A(M().goals.some(g=>g.target===nid),'у новой комнаты есть цель');
+tab('plan');const h3=w.SM.app.plan(),n1=M().geometry.rooms.length;h3.edit('removeRoom',nid);await tick();
+A(M().geometry.rooms.length===n1&&$('#planmsg').textContent.includes('нельзя убрать'),'план: комнату с данными убрать нельзя — проект цел, причина показана');
+A(h3.getGeometry().rooms.some(x=>x.id===nid),'план: после отказа чертёж вернулся к данным проекта');
+tab('state');C(`[data-a=del][data-p="object.goals.${M().goals.findIndex(g=>g.target===nid)}"]`);tab('plan');w.SM.app.plan().edit('removeRoom',nid);
+A(!M().geometry.rooms.some(x=>x.id===nid)&&!M().surfaces.some(s=>s.roomId===nid),'план: пустую комнату убрать можно, поверхности ушли');
+A(w.SM.store.snaps(w.localStorage).length>0,'план: точка отката создана перед правкой');}
 process.exit(ok?0:1)})();
