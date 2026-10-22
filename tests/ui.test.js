@@ -65,4 +65,16 @@ C('[data-k=rule]');A($('#main').textContent.includes('Новое правило'
 C('[data-k=action]');chg('[data-a=act-type]','MODIFY_QUANTITY');A($('#main').textContent.includes('почему'),'библиотека: действие добавлено и сменено');
 A($('#main').textContent.includes('Проверка библиотеки'),'библиотека: пустое действие даёт замечания проверки');}
 {const b=[...w.document.querySelectorAll('[data-a=lib-tog]')].find(x=>x.textContent.includes('Новый процесс'));b.click();C('[data-k=effect]');chg('[data-a=eff-type]','SET_WALL');A($('#main').textContent.includes('свойство'),'библиотека: эффект на геометрию (свойство стены)');}
+{const M=()=>JSON.parse(w.localStorage.getItem('stroysmeta:model')).object;tab('state');const n0=M().observations.length;
+A($('#main').textContent.includes('Наблюдения'),'состояние: блок наблюдений');C('[data-a=obs-add]');const i=n0;A(M().observations.length===n0+1,'наблюдение: добавлено');
+A($('#main').textContent.includes('не указано, что это'),'наблюдение: без вида — предупреждение');
+chg(`[data-p="object.observations.${i}.what"]`,'old_screed');A(M().observations[i].what==='old_screed','наблюдение: вид сохранён');
+C(`[data-a=obs-padd][data-p="${i}"]`);A('параметр' in M().observations[i].params&&M().observations[i].params['параметр']===null,'наблюдение: параметр добавлен (неизвестно)');
+chg(`[data-a=obs-pkey][data-p="${i}|параметр"]`,'thickness');A('thickness' in M().observations[i].params,'наблюдение: параметр переименован');
+chg(`[data-p="object.observations.${i}.params.thickness"]`,'55');A(M().observations[i].params.thickness===55,'наблюдение: значение параметра — число');
+chg(`[data-a=obs-present][data-p="${i}"]`,'no');A(M().observations[i].present===false,'наблюдение: «нет (проверили)»');
+chg(`[data-a=obs-present][data-p="${i}"]`,'yes');A(!('present' in M().observations[i]),'наблюдение: снова «есть»');
+chg(`[data-p="object.observations.${i}.target"]`,M().geometry.rooms[0].id);A(M().observations[i].target===M().geometry.rooms[0].id,'наблюдение: привязка к помещению');
+tab('lib');chg('[data-a=cond-type]','obs');A($('#main').textContent.includes('наблюдение')&&$('#obskinds').innerHTML.includes('old_screed'),'библиотека: условие «наблюдение», подсказка видов');
+tab('state');C(`[data-a=del][data-p="object.observations.${i}"]`);A(M().observations.length===n0,'наблюдение: удалено');}
 process.exit(ok?0:1)})();

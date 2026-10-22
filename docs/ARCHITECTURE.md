@@ -18,10 +18,10 @@
 |---|---|---|
 | `core.js` | ✅ | `uid`, `TRI` (YES/NO/UNKNOWN/NA), `isUnknown`, формулы: `parse`→AST, `evalAst`, `evalExpr`, `explain`; `packs` (упаковки) |
 | `geometry.js` | ✅ (ядро) | `SM.geo.deriveRoom`, `polygon`, `validate` (единый валидатор геометрии, D35): помещение = замкнутый контур из N стен. Контракт с CAD-модулем — `docs/CAD_CONTRACT.md` |
-| `model.js` | ✅ (ядро) | `newObject`, `getState/setState` (по умолчанию UNKNOWN), `addObservation`, `addGoal`, `derive`, `syncSurfaces` (поверхности из геометрии, D36), `migrate` (`schemaVersion`, неизвестные поля сохраняются, схема из будущего — отказ) |
+| `model.js` | ✅ (ядро) | `newObject`, `getState/setState` (по умолчанию UNKNOWN), `addObservation`, `addGoal`, `derive`, `syncSurfaces` (поверхности из геометрии, D36), `migrate` (`schemaVersion`, неизвестные поля сохраняются, схема из будущего — отказ), наблюдения: `observationsOf/updateObservation/removeObservation/setObsParam/renameObsParam/removeObsParam` (D40) |
 | `seeds.js` | ✅ | `SM.seeds.bathroom()` — тестовая ванная из ТЗ как данные |
 | `tech.js` | ⏳ Фаза 3–4 | Process, Technology, Operation, граф связей, эффекты |
-| `rules.js` | ✅ (срез) | `SM.rules.evalCond` (T/F/U), `plan(obj, lib, roomId)` → процессы со статусами, объяснения, вопросы; `complete()` применяет эффекты. Библиотека процессов и правил — данные в `S.library` (демо: `SM.seeds.library()`) |
+| `rules.js` | ✅ (срез) | `SM.rules.evalCond` (T/F/U; в т.ч. условие `obs` по наблюдениям, D40), `plan(obj, lib, roomId)` → процессы со статусами, объяснения, вопросы; `complete()` применяет эффекты. Библиотека процессов и правил — данные в `S.library` (демо: `SM.seeds.library()`) |
 | `materials.js`, `units.js` | ⏳ Фаза 6 | requirement ≠ product, единицы, потери/резерв |
 | `estimate.js`, `purchase.js` | ⏳ Фаза 7 | смета-снимок, закупки required/purchased/used/to_buy |
 | `execution.js` | ⏳ Фаза 8 | статусы работ, факт, приёмка |
@@ -34,7 +34,7 @@
 | `norms.js` | ✅ | `SM.norms`: `lines` (строки норм из справочника по технологии), `set/setAll/isOk` (отметки `S.normOk`), `report` (счётчик «подтверждено X из Y», операции и что в них неизвестно). Только показ и отметки, в расчёт ничего не подставляет (D31) |
 | `pauses.js` | ✅ | `SM.pauses`: `schedule(S, steps)` — время шагов маршрута по паузам `S.pauses` (earliest/latest, итог от…до, неизвестное с причиной, предупреждения о порядке), `forProcess`, `num`. Данные вводит человек (D32) |
 | `fact.js` | ✅ | `SM.fact`: `setOp/setMat` (факт после начала работы, до приёмки), `report` (план↔факт), `stock` (куплено/израсходовано/остаток), `approve/compare` (снимки смет `S.approved`). Смету не меняет |
-| `libedit.js` | ✅ | редактор библиотеки: `defaultCond`, `replaceAt/deleteAt`, `parseValue`, `describeRule` (правило словами), `validate` (проверка библиотеки), `usage/removeProcess`. UI — вкладка «Библиотека» (D38) |
+| `libedit.js` | ✅ | редактор библиотеки: `defaultCond`, `replaceAt/deleteAt`, `parseValue`, `describeRule` (правило словами), `validate` (проверка библиотеки), `obsKinds` (виды наблюдений для подсказок), `usage/removeProcess`. UI — вкладка «Библиотека» (D38) |
 | `legacy.js` | ✅ | `convert(старый S)` → технологии и материалы (ветвление → отдельные технологии, композиты раскрываются, без дублей по `legacyId`); `objects` (список объектов старого); `importObject` (помещения → геометрия, этапы → план по помещениям, доп. позиции, проценты, отчёт; v0.17) |
 | `ui.js` + `index.html` | ✅ (срез) | новый интерфейс на новой модели; данные в `stroysmeta:model` (рядом копия `:backup`). Старый `old.html` не тронут |
 | `storage.js` | ✅ | `SM.store`: load/save (`stroysmeta:model`, копия `:backup`), `normalize/parse` (миграция, отказ для схемы из будущего), точки отката (`:snaps`), `replace` (подмена данных только через точку отката), облако Gist (`cloud(ls, fetch)`: `check/push/adopt`, чистая `decide`), `sheets` для Excel. `ls` и `fetch` передаются снаружи — тестируется в Node |

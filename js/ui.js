@@ -93,6 +93,21 @@
     return `<div class=mat>${inPlan.map(([p, ix]) => `В плане: ${esc((SM.ver.resolve(S, p) || {name: '(удалена)'}).name)} ${btn('del', 'plan.' + ix, '✕')}`).join('<br>')}
       ${opts.length ? `<select data-tp="${rid}|${pid}">${opts.map(t => `<option value="${t.id}">${esc(t.name)}</option>`).join('')}</select> ${btn('plan-tech', rid + '|' + pid, '＋ В план')}` : '<i class=hint>Нет технологии для этого процесса — привяжите её во вкладке «Технологии».</i>'}</div>`;
   }
+  /* Наблюдения (D40): что уже есть на объекте. Правка — через SM.model.*, правила читают их условием «наблюдение». */
+  function obsEd(r) {
+    const o = S.object, M = SM.model, ids = new Set(M.observationsOf(o, r.id, {orphans: true}).map(x => x.id));
+    const tgt = x => { const base = [[r.id, 'всё помещение']].concat(o.surfaces.filter(s => s.roomId === r.id && !s.orphan).map(s => [s.id, s.name]));
+      const cur = o.surfaces.find(s => s.id === x.target); if (cur && cur.orphan) base.push([cur.id, cur.name + ' (стена убрана)']); return base; };
+    return '<h4>Наблюдения — что уже есть на объекте</h4><p class=hint>Факты о существующем (например, стяжка ~55 мм): не результат технологии. «Нет записи» ≠ «нет» — если проверили и этого нет, поставьте «нет». Пустое значение параметра = неизвестно.</p>'
+      + (o.observations.map((x, xi) => [x, xi]).filter(([x]) => ids.has(x.id)).map(([x, xi]) => `<div class=op>${sel('object.observations.' + xi + '.target', x.target, tgt(x))}
+        <input data-a=set data-p="object.observations.${xi}.what" list=obskinds value="${esc(x.what)}" placeholder="что это (вид)" style="width:150px">
+        <select data-a=obs-present data-p="${xi}"><option value=yes ${x.present === false ? '' : 'selected'}>есть</option><option value=no ${x.present === false ? 'selected' : ''}>нет (проверили)</option></select>
+        ${inp('object.observations.' + xi + '.note', x.note || '', {w: 260, ph: 'заметка'})} ${btn('del', 'object.observations.' + xi, '✕')}
+        ${x.what ? '' : '<span class=warn>⚠ не указано, что это — правила такое не увидят</span>'}
+        <div style="margin-left:14px">${Object.entries(x.params || {}).map(([k, v]) => `<span style="white-space:nowrap"><input data-a=obs-pkey data-p="${xi}|${esc(k)}" value="${esc(k)}" style="width:110px"> = ${vinp('object.observations.' + xi + '.params.' + k, v)} ${btn('obs-pdel', xi + '|' + k, '✕')}</span> `).join('')}${btn('obs-padd', xi, '＋ параметр')}</div></div>`).join('') || '<i class=hint>не записано</i>')
+      + btn('obs-add', r.id, '＋ Наблюдение');
+  }
+  const obsList = () => `<datalist id=obskinds>${LX.obsKinds(S.object, S.library).map(k => `<option value="${esc(k)}">`).join('')}</datalist>`;
   function viewState() {
     const o = S.object, lib = S.library;
     return '<h2>Состояние и что дальше</h2><p class=hint>«Неизвестно» ≠ «нет»: система не считает неизвестное отсутствующим. Отметьте то, что знаете — список «что дальше» обновится.</p>' + o.geometry.rooms.map(r => {
@@ -106,6 +121,7 @@
         ${P.questions.length ? '<h4>Нужно уточнить</h4>' + P.questions.map(q => `<div class=warn>? ${esc(q.text)} <i class=hint>(${esc(q.why)})</i></div>`).join('') : ''}
         ${P.notes.map(n => `<div class=warn>${n.kind === 'WARN' ? '⚠' : '💡'} ${esc(n.text)} <i class=hint>— ${esc(n.because)}</i></div>`).join('')}
         ${groups}
+        ${obsEd(r)}
         <h4>Текущее состояние</h4>${kinds.map(k => o.surfaces.filter(x => x.roomId === r.id && x.kind === k && !x.orphan).map(sf => `<div class=op><b>${esc(sf.name)}</b> ${(lib.layers[k] || []).map(([ly, lb]) => `<span style="white-space:nowrap">${esc(lb)}: <select data-a=state data-p="${sf.id}|${ly}">${TRI_OPTS.map(([v, t]) => `<option value=${v} ${SM.model.getState(o, sf.id, ly) === v ? 'selected' : ''}>${t}</option>`).join('')}</select></span>`).join(' ')}</div>`).join('')).join('')}</div>`; }).join('');
   }
   const KINDS = [['floor', 'пол'], ['wall', 'стены'], ['ceiling', 'потолок'], ['box', 'короб']];
@@ -247,6 +263,7 @@
     else if (type === 'state') h += `${sel(path + '.state.kind', c.state.kind, SURF)} ${sel(path + '.state.layer', c.state.layer, layerOpts(c.state.kind))} = ${sel(path + '.state.is', c.state.is, TRI3)} ${sel(path + '.state.quant', c.state.quant || 'all', [['all', 'у всех поверхностей'], ['any', 'хотя бы у одной']])}`;
     else if (type === 'goal') h += sel(path + '.goal', c.goal, goalOpts());
     else if (type === 'param') h += `${sel(path + '.param.goal', c.param.goal, goalOpts())} параметр ${inp(path + '.param.key', c.param.key, {w: 110})} ${sel(path + '.param.op', c.param.op, OPS)} ${vinp(path + '.param.value', c.param.value)}`;
+    else if (type === 'obs') h += `наблюдение <input data-a=set data-p="${path}.obs.what" list=obskinds value="${esc(c.obs.what)}" placeholder="вид" style="width:140px"> на ${sel(path + '.obs.kind', c.obs.kind || '', [['', 'где угодно']].concat(SURF))} · параметр ${inp(path + '.obs.key', c.obs.key || '', {w: 100, ph: '(не нужен)'})} ${sel(path + '.obs.op', c.obs.op || '==', OPS)} ${vinp(path + '.obs.value', c.obs.value)}`;
     else if (type === 'geo') h += `${sel(path + '.geo.key', c.geo.key, LX.GEO_KEYS)} ${sel(path + '.geo.op', c.geo.op, OPS)} ${vinp(path + '.geo.value', c.geo.value)}`;
     return h;
   }
@@ -291,7 +308,7 @@
   }
   const VIEWS = {lib: viewLib, object: viewObject, state: viewState, routes: viewRoutes, works: viewWorks, techs: viewTechs, materials: viewMaterials, estimate: viewEstimate, buy: viewBuy, kb: viewKb, data: viewData};
   const TABS = [['object', 'Объект'], ['state', 'Состояние'], ['routes', 'Маршруты'], ['works', 'Работы'], ['techs', 'Технологии'], ['lib', 'Библиотека'], ['materials', 'Материалы'], ['estimate', 'Смета'], ['buy', 'Закупка'], ['kb', 'Справочник'], ['data', 'Данные']];
-  function render() { const y = scrollY; $('nav').innerHTML = TABS.map(([k, t]) => `<button class="${k === tab ? 'on' : ''}" data-a=tab data-p=${k}>${t}</button>`).join('') + '<span id=sync class=hint style="padding:8px;white-space:nowrap"></span>'; paintSync(); $('main').innerHTML = VIEWS[tab](); scrollTo(0, y); }
+  function render() { const y = scrollY; $('nav').innerHTML = TABS.map(([k, t]) => `<button class="${k === tab ? 'on' : ''}" data-a=tab data-p=${k}>${t}</button>`).join('') + '<span id=sync class=hint style="padding:8px;white-space:nowrap"></span>'; paintSync(); $('main').innerHTML = VIEWS[tab]() + obsList(); scrollTo(0, y); }
   const NEW = {tech: () => ({id: uid(), name: 'Новая технология', params: [], ops: []}), op: () => ({id: uid(), name: '', unit: 'м2', price: null, qty: '', mats: []}), mat: () => ({id: uid(), matId: '', rate: ''}),
     route: () => ({id: uid(), name: 'Новый маршрут', roomId: S.object.geometry.rooms[0] ? S.object.geometry.rooms[0].id : '', steps: [], assume: []}), rstep: () => ({processId: '', techId: ''}), rassume: () => ({kind: 'floor', layer: '', value: 'YES'}),
     note: () => ({id: uid(), cat: 'accept', text: ''}), pause: () => ({id: uid(), beforeId: '', afterId: '', minDays: null, maxDays: null, note: ''}),
@@ -309,6 +326,9 @@
     'lib-goal-add'() { const id = 'goal_' + uid().slice(0, 6); S.library.goalNames[id] = 'Новая цель'; S.library.goals[id] = []; },
     'lib-del-goal'(g) { if (!confirm('Удалить цель из библиотеки? Цели объектов с этим результатом перестанут давать процессы.')) return; delete S.library.goalNames[g]; delete S.library.goals[g]; },
     'layer-add'(kind) { const id = 'layer_' + uid().slice(0, 5); S.library.layers[kind].push([id, 'Новый слой']); },
+    'obs-add'(rid) { SM.model.addObservation(S.object, {target: rid, what: '', note: ''}); },
+    'obs-padd'(i) { const x = S.object.observations[+i]; let k = 'параметр', n = 1; while (k in (x.params || {})) k = 'параметр' + (++n); SM.model.setObsParam(S.object, x.id, k, null); },
+    'obs-pdel'(p) { const [i, k] = p.split('|'); SM.model.removeObsParam(S.object, S.object.observations[+i].id, k); },
     'goal-add'(rid) { const first = Object.keys(S.library.goalNames || {})[0]; if (first) S.object.goals.push({id: uid(), target: rid, result: first, params: {}}); },
     'wall-add'(p) { const g = S.object.geometry, r = g.rooms[+p], w = {id: uid(), name: 'Стена ' + (r.wallIds.length + 1), len: null, turn: 90, material: ''}; g.walls.push(w); r.wallIds.push(w.id); },
     'wall-del'(p) { const [ri, i] = p.split('.').map(Number), g = S.object.geometry, r = g.rooms[ri], id = r.wallIds[i]; r.wallIds.splice(i, 1); if (!g.rooms.some(x => x.wallIds.includes(id))) g.walls = g.walls.filter(w => w.id !== id); },
@@ -409,6 +429,8 @@
   document.addEventListener('change', e => { const t = e.target; if (t.dataset.a !== 'set') return; const k = t.dataset.p.split('.'), key = k.pop(), o = get(k.join('.') || '');
     let v = t.value.trim(); if (t.dataset.v) v = LX.parseValue(v, t.dataset.v === 'list'); else if (t.dataset.n) { v = v === '' ? null : parseFloat(v.replace(',', '.')); if (v !== null && !isFinite(v)) v = null; }
     if (k.length === 1 && k[0] === 'bought' || k[0] === 'bought') S.bought[key] = v; else o[key] = v; save(); render(); });
+  document.addEventListener('change', e => { const t = e.target, a = t.dataset.a; if (a !== 'obs-present' && a !== 'obs-pkey') return; const [i, k] = t.dataset.p.split('|'), x = S.object.observations[+i];
+    try { if (a === 'obs-present') SM.model.updateObservation(S.object, x.id, {present: t.value === 'yes'}); else SM.model.renameObsParam(S.object, x.id, k, t.value.trim()); } catch (err) { alert(err.message); } save(); render(); });
   document.addEventListener('change', e => { const t = e.target; if (t.dataset.a !== 'state') return; const [id, layer] = t.dataset.p.split('|'); SM.model.setState(S.object, id, layer, t.value); save(); render(); });
   document.addEventListener('change', e => { const t = e.target; if (t.dataset.a !== 'measure') return; const [id, nid] = t.dataset.p.split('|'); try { SM.exec.setMeasure(S.plan.find(x => x.id === id), nid, t.value); } catch (err) { alert(err.message); } save(); });
   document.addEventListener('change', e => { const t = e.target; if (t.dataset.a !== 'norm-ok') return; const [id, k] = t.dataset.p.split('|'); SM.norms.set(S, id, k, t.checked); save(); render(); });

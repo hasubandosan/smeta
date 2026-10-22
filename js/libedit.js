@@ -3,7 +3,7 @@
 (function (root) {
   'use strict';
   const SM = root.SM = root.SM || {}, X = SM.libedit = {};
-  X.COND_TYPES = [['all', 'все условия (И)'], ['any', 'любое из условий (ИЛИ)'], ['not', 'НЕ'], ['room', 'свойство помещения'], ['state', 'состояние поверхности'], ['goal', 'есть цель'], ['param', 'параметр цели'], ['geo', 'размер помещения']];
+  X.COND_TYPES = [['all', 'все условия (И)'], ['any', 'любое из условий (ИЛИ)'], ['not', 'НЕ'], ['room', 'свойство помещения'], ['state', 'состояние поверхности'], ['goal', 'есть цель'], ['param', 'параметр цели'], ['geo', 'размер помещения'], ['obs', 'наблюдение (что уже есть)']];
   X.GEO_KEYS = [['height', 'высота, м'], ['floor', 'площадь пола, м²'], ['ceiling', 'площадь потолка, м²'], ['perimeter', 'периметр, м'], ['wallArea', 'площадь стен, м²'], ['openingsArea', 'площадь проёмов, м²']];
   X.ROOM_KEYS = [['type', 'тип'], ['height', 'высота, м'], ['name', 'название']];
   X.KIND_RU = {floor: 'пол', wall: 'стены', ceiling: 'потолок', box: 'короб'};
@@ -11,7 +11,7 @@
   X.condType = c => (c ? X.COND_TYPES.map(t => t[0]).find(k => k in c) || null : null);
   X.defaultCond = (type, lib) => { const g0 = Object.keys((lib || {}).goalNames || {})[0] || '';
     return ({all: {all: []}, any: {any: []}, not: {not: {all: []}}, room: {room: {key: 'type', op: '==', value: ''}}, state: {state: {kind: 'floor', layer: '', is: 'YES', quant: 'all'}},
-      goal: {goal: g0}, param: {param: {goal: g0, key: '', op: '==', value: true}}, geo: {geo: {key: 'height', op: '>', value: null}}})[type]; };
+      goal: {goal: g0}, param: {param: {goal: g0, key: '', op: '==', value: true}}, geo: {geo: {key: 'height', op: '>', value: null}}, obs: {obs: {what: '', kind: '', key: '', op: '==', value: true}}})[type]; };
   X.parseOne = s => { s = String(s).trim(); if (s === '') return null; if (s === 'true' || s === 'да') return true; if (s === 'false' || s === 'нет') return false;
     const n = Number(s.replace(',', '.')); return isFinite(n) ? n : s; };
   X.parseValue = (s, list) => (list ? String(s).split(',').map(x => X.parseOne(x)).filter(x => x !== null) : X.parseOne(s));
@@ -31,6 +31,7 @@
       return (X.KIND_RU[s.kind] || s.kind) + ': «' + layerName(lib, s.kind, s.layer) + '» — ' + w + (s.quant === 'any' ? ' (хотя бы у одной поверхности)' : ''); }
     if (t === 'goal') return 'есть цель «' + gn(c.goal) + '»';
     if (t === 'param') return 'у цели «' + gn(c.param.goal) + '» ' + (c.param.key || '?') + ' ' + c.param.op + ' ' + fmt(c.param.value);
+    if (t === 'obs') return 'наблюдение «' + (c.obs.what || '?') + '»' + (c.obs.kind ? ' (' + (X.KIND_RU[c.obs.kind] || c.obs.kind) + ')' : '') + ' есть' + (c.obs.key ? ', ' + c.obs.key + ' ' + (c.obs.op || '==') + ' ' + fmt(c.obs.value) : '');
     return 'размер: ' + (X.GEO_KEYS.find(k => k[0] === c.geo.key) || [0, c.geo.key])[1] + ' ' + c.geo.op + ' ' + fmt(c.geo.value); };
   X.describeAction = (a, lib) => { const p = id => ((lib.processes || []).find(x => x.id === id) || {name: id || '?'}).name, sc = a.process ? ' (' + p(a.process) + ')' : '';
     switch (a.do) { case 'REQUIRE': return 'потребовать «' + p(a.process) + '»'; case 'ADD_PROCESS': return 'добавить «' + p(a.process) + '»'; case 'FORBID': return 'запретить «' + p(a.process) + '»';
@@ -54,7 +55,8 @@
     const condCheck = (c, where) => { const t = X.condType(c); if (!t) { add('warn', where + ': условие не задано'); return; }
       if (t === 'all' || t === 'any') c[t].forEach(x => condCheck(x, where)); else if (t === 'not') condCheck(c.not, where);
       else if (t === 'state') { if (!c.state.layer) add('warn', where + ': в условии не выбран слой'); else if (!(layers[c.state.kind] || []).some(l => l[0] === c.state.layer)) add('warn', where + ': слой «' + c.state.layer + '» не описан для «' + (X.KIND_RU[c.state.kind] || c.state.kind) + '»'); }
-      else if (t === 'goal') { if (!(c.goal in goals)) add('warn', where + ': цель «' + c.goal + '» не описана'); } else if (t === 'param') { if (!(c.param.goal in goals)) add('warn', where + ': цель «' + c.param.goal + '» не описана'); if (!c.param.key) add('warn', where + ': у параметра цели нет ключа'); } };
+      else if (t === 'goal') { if (!(c.goal in goals)) add('warn', where + ': цель «' + c.goal + '» не описана'); } else if (t === 'param') { if (!(c.param.goal in goals)) add('warn', where + ': цель «' + c.param.goal + '» не описана'); if (!c.param.key) add('warn', where + ': у параметра цели нет ключа'); }
+      else if (t === 'obs') { if (!c.obs.what) add('warn', where + ': в условии не указано, какое наблюдение'); } };
     for (const p of P) { if (p.needed) condCheck(p.needed, 'Процесс «' + p.name + '» (нужен, если)'); if (p.requires) condCheck(p.requires, 'Процесс «' + p.name + '» (условие)'); }
     for (const r of lib.rules || []) { const w = 'Правило «' + (r.name || r.id) + '»'; condCheck(r.if, w);
       for (const a of r.then || []) { if (['REQUIRE', 'ADD_PROCESS', 'FORBID'].includes(a.do) && !has(a.process)) add('error', w + ': действие «' + X.describeAction(a, lib) + '» ссылается на несуществующий процесс');
@@ -63,6 +65,11 @@
         if (a.do === 'SET_VALUE' && !a.key) add('error', w + ': у SET_VALUE нет ключа параметра'); if (!a.because) add('warn', w + ': у действия нет объяснения «почему»'); } }
     for (const [g, list] of Object.entries(lib.goals || {})) { if (!(g in goals)) add('warn', 'Цель «' + g + '» есть в маршрутах, но без названия'); for (const pid of list) if (!has(pid)) add('error', 'Цель «' + (goals[g] || g) + '»: процесс не найден'); }
     return out; };
+
+  // Виды наблюдений (подсказка при вводе): уже записанные в объекте + упомянутые в условиях библиотеки
+  X.obsKinds = (obj, lib) => { const s = new Set(((obj && obj.observations) || []).map(o => o.what).filter(Boolean));
+    const walk = c => { if (!c) return; if (c.all || c.any) (c.all || c.any).forEach(walk); else if (c.not) walk(c.not); else if (c.obs && c.obs.what) s.add(c.obs.what); };
+    for (const p of (lib && lib.processes) || []) { walk(p.needed); walk(p.requires); } for (const r of (lib && lib.rules) || []) walk(r.if); return [...s].sort(); };
 
   // Где используется процесс (для подтверждения удаления)
   X.usage = (lib, S, pid) => ({goals: Object.values(lib.goals || {}).filter(l => l.includes(pid)).length, after: (lib.processes || []).filter(p => (p.after || []).includes(pid)).length,

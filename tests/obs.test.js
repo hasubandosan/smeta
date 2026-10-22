@@ -1,0 +1,56 @@
+// Наблюдения: правка, условие «наблюдение» в правилах, редактор библиотеки: node tests/obs.test.js
+const assert = require('assert'), SM = require('../js/core.js');
+for (const f of ['geometry', 'model', 'seeds', 'rules', 'libedit']) require('../js/' + f + '.js');
+let n = 0; const t = (name, f) => { f(); n++; console.log('OK   ' + name); }, M = SM.model, X = SM.libedit;
+const fresh = () => { const o = SM.seeds.bathroom(), L = SM.seeds.library(), r = o.geometry.rooms[0], ctx = () => ({obj: o, room: r, goals: o.goals});
+  return {o, L, r, ctx, floorObs: o.observations.find(x => x.what === 'existing_floor'), ev: (c, unk) => SM.rules.evalCond(c, ctx(), unk)}; };
+
+t('observationsOf: наблюдения помещения и его поверхностей; убранная стена не участвует без orphans', () => { const {o, r} = fresh();
+  assert.strictEqual(M.observationsOf(o, r.id).length, 2);
+  const w = o.surfaces.find(s => s.kind === 'wall'), x = M.addObservation(o, {target: w.id, what: 'crack', note: 'трещина'});
+  assert.strictEqual(M.observationsOf(o, r.id).length, 3); w.orphan = true;
+  assert.ok(!M.observationsOf(o, r.id).includes(x)); assert.ok(M.observationsOf(o, r.id, {orphans: true}).includes(x)); });
+t('правка: изменить, перепривязать, удалить; цель только помещение/поверхность', () => { const {o, r, floorObs} = fresh();
+  M.updateObservation(o, floorObs.id, {what: 'old_floor', note: 'другая заметка'}); assert.strictEqual(floorObs.what, 'old_floor');
+  const wall = o.surfaces.find(s => s.kind === 'wall'); M.updateObservation(o, floorObs.id, {target: wall.id}); assert.strictEqual(floorObs.target, wall.id);
+  assert.throws(() => M.updateObservation(o, floorObs.id, {target: 'нет-такого'}), /помещение или поверхность/);
+  assert.throws(() => M.updateObservation(o, 'x', {what: 'a'}), /не найдено/);
+  M.removeObservation(o, floorObs.id); assert.ok(!o.observations.includes(floorObs)); assert.throws(() => M.removeObservation(o, floorObs.id), /не найдено/); });
+t('параметры: добавить (пусто = неизвестно), переименовать с сохранением порядка, удалить, плохие ключи', () => { const {o, floorObs} = fresh();
+  M.setObsParam(o, floorObs.id, 'thickness', 55); M.setObsParam(o, floorObs.id, 'note2', ''); assert.strictEqual(floorObs.params.thickness, 55); assert.strictEqual(floorObs.params.note2, null);
+  M.renameObsParam(o, floorObs.id, 'thickness', 'толщина'); assert.deepStrictEqual(Object.keys(floorObs.params), ['толщина', 'note2']); assert.strictEqual(floorObs.params['толщина'], 55);
+  assert.throws(() => M.renameObsParam(o, floorObs.id, 'толщина', 'note2'), /уже есть/); assert.throws(() => M.setObsParam(o, floorObs.id, 'a.b', 1), /ключ/); assert.throws(() => M.setObsParam(o, floorObs.id, '', 1), /ключ/);
+  M.removeObsParam(o, floorObs.id, 'note2'); assert.ok(!('note2' in floorObs.params)); });
+t('present: false = «проверили, нет»; true снимает поле', () => { const {o, floorObs} = fresh(); M.updateObservation(o, floorObs.id, {present: false}); assert.strictEqual(floorObs.present, false);
+  M.updateObservation(o, floorObs.id, {present: true}); assert.ok(!('present' in floorObs)); });
+
+t('условие obs: нет записи → U (не «нет») с причиной; есть → T; «проверили, нет» → F', () => { const {o, ev, floorObs} = fresh(), unk = [];
+  assert.strictEqual(ev({obs: {what: 'asbestos'}}, unk), 'U'); assert.ok(unk[0].includes('asbestos'));
+  assert.strictEqual(ev({obs: {what: 'existing_floor'}}), 'T'); assert.strictEqual(ev({obs: {what: 'existing_tile_walls'}}), 'T');
+  M.updateObservation(o, floorObs.id, {present: false}); assert.strictEqual(ev({obs: {what: 'existing_floor'}}), 'F');
+  M.updateObservation(o, floorObs.id, {present: true}); const extra = M.addObservation(o, {target: floorObs.target, what: 'existing_floor', present: false}); void extra;
+  assert.strictEqual(ev({obs: {what: 'existing_floor'}}), 'T', 'положительная запись сильнее'); });
+t('условие obs: параметр — неизвестный → U, подходящий → T, неподходящий → F; kind сужает поверхность', () => { const {o, ev, floorObs} = fresh(), unk = [], c = op => ({obs: {what: 'existing_floor', kind: 'floor', key: 'thickness', op, value: 40}});
+  assert.strictEqual(ev(c('>'), unk), 'U'); assert.ok(/thickness/.test(unk.join()));
+  M.setObsParam(o, floorObs.id, 'thickness', 55); assert.strictEqual(ev(c('>')), 'T'); assert.strictEqual(ev(c('<')), 'F');
+  assert.strictEqual(ev({obs: {what: 'existing_floor', kind: 'wall'}}), 'U', 'на стенах такого наблюдения нет → неизвестно');
+  assert.strictEqual(ev({obs: {what: 'existing_tile_walls', kind: 'floor'}}), 'U', 'наблюдение помещения не считается наблюдением пола'); });
+t('правило по наблюдению: неизвестная толщина → вопрос; 55 мм → процесс в плане с причиной; 30 мм → не добавляется', () => { const {o, L, r, floorObs} = fresh();
+  L.rules.push({id: 'old_screed', name: 'Толстая старая стяжка', ask: 'Какой толщины старая стяжка?', if: {obs: {what: 'existing_floor', kind: 'floor', key: 'thickness', op: '>', value: 40}}, then: [{do: 'WARN', text: 'Старая стяжка толстая', because: 'толщина больше 40 мм'}]});
+  let P = SM.rules.plan(o, L, r.id); assert.ok(P.questions.some(q => q.text === 'Какой толщины старая стяжка?')); assert.ok(!P.notes.some(x => x.text === 'Старая стяжка толстая'));
+  M.setObsParam(o, floorObs.id, 'thickness', 55); P = SM.rules.plan(o, L, r.id);
+  assert.ok(!P.questions.some(q => q.text === 'Какой толщины старая стяжка?')); assert.ok(P.notes.some(x => x.text === 'Старая стяжка толстая' && x.because === 'толщина больше 40 мм'));
+  M.setObsParam(o, floorObs.id, 'thickness', 30); P = SM.rules.plan(o, L, r.id); assert.ok(!P.notes.some(x => x.text === 'Старая стяжка толстая') && !P.questions.some(q => q.text === 'Какой толщины старая стяжка?')); });
+t('наблюдение не меняется само при выполнении процессов (это не состояние)', () => { const {o, L, r, floorObs} = fresh(), before = JSON.stringify(o.observations);
+  SM.rules.complete(o, L, r.id, 'demolish_floor'); assert.strictEqual(JSON.stringify(o.observations), before); assert.strictEqual(floorObs.what, 'existing_floor'); });
+
+t('редактор: тип obs в списке, заготовка, описание словами, проверка пустого вида, подсказки видов', () => { const {o, L} = fresh();
+  assert.ok(X.COND_TYPES.some(x => x[0] === 'obs')); const c = X.defaultCond('obs', L); assert.strictEqual(X.condType(c), 'obs');
+  assert.strictEqual(X.describeCond({obs: {what: 'existing_floor', kind: 'floor', key: 'thickness', op: '>', value: 40}}, L), 'наблюдение «existing_floor» (пол) есть, thickness > 40');
+  assert.strictEqual(X.describeCond({obs: {what: 'crack'}}, L), 'наблюдение «crack» есть');
+  L.rules.push({id: 'e', name: 'Пустое', if: c, then: [{do: 'WARN', text: 'x', because: 'b'}]}); assert.ok(X.validate(L).some(v => v.level === 'warn' && /какое наблюдение/.test(v.text)));
+  L.rules.push({id: 'g', name: 'Г', if: {all: [{obs: {what: 'lib_only_kind'}}]}, then: [{do: 'WARN', text: 'x', because: 'b'}]});
+  const kinds = X.obsKinds(o, L); assert.ok(kinds.includes('existing_floor') && kinds.includes('lib_only_kind')); assert.deepStrictEqual(kinds, [...kinds].sort()); });
+t('миграция/сохранение: старые наблюдения без present читаются как «есть»; JSON-круг не теряет данные', () => { const {o} = fresh(), back = SM.model.migrate(JSON.parse(JSON.stringify(o)));
+  assert.deepStrictEqual(back.observations, o.observations); assert.ok(back.observations.every(x => x.present === undefined)); });
+console.log('Итого проверок: ' + n);

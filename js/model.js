@@ -1,7 +1,7 @@
 /* Модель объекта: геометрия + поверхности + текущее состояние + наблюдения + цели + закупленное. Без DOM.
    obj = {id, name, geometry:{walls,openings,rooms}, surfaces:[{id,roomId,kind,wallId?,name}],
           state:{ "<surfaceId>.<слой>": {value:'YES'|'NO'|'UNKNOWN'|'NOT_APPLICABLE', note?} },
-          observations:[{id,target,what,params,note}],   // существующее, созданное не нами
+          observations:[{id,target,what,params,note,present?}],   // существующее, созданное не нами (target — помещение или поверхность; present:false = «проверили, этого нет»)
           goals:[{id,target,result,params,note}],        // что пользователь хочет получить
           purchased:[{id,name,qty,unit,packQty,note}], schemaVersion} */
 (function (root) {
@@ -20,6 +20,21 @@
     obj.state[surfaceId + '.' + layer] = note ? {value, note} : {value}; return obj;
   };
   M.addObservation = (obj, o) => { const x = Object.assign({id: SM.uid(), params: {}}, o); obj.observations.push(x); return x; };
+  // Наблюдения (D40): факты о существующем (стяжка ~55 мм, старая плитка), привязаны к помещению или поверхности. Это не состояние и не результат технологии проекта.
+  // present:false = «проверили — этого нет» (нет записи ≠ «нет»: это неизвестно). params: числа/текст, null = неизвестно.
+  const okTarget = (obj, id) => obj.geometry.rooms.some(r => r.id === id) || obj.surfaces.some(s => s.id === id);
+  const findObs = (obj, id) => { const o = obj.observations.find(x => x.id === id); if (!o) throw new Error('наблюдение не найдено'); return o; };
+  const okKey = k => { if (!k || /[.|]/.test(k)) throw new Error('ключ параметра не должен быть пустым и содержать «.» или «|»'); return k; };
+  M.observationsOf = (obj, roomId, opt) => { const sid = new Set(obj.surfaces.filter(s => s.roomId === roomId && (!s.orphan || (opt && opt.orphans))).map(s => s.id)); return obj.observations.filter(o => o.target === roomId || sid.has(o.target)); };
+  M.updateObservation = (obj, id, patch) => { const o = findObs(obj, id);
+    if ('target' in patch && !okTarget(obj, patch.target)) throw new Error('цель наблюдения — помещение или поверхность объекта');
+    for (const k of Object.keys(patch)) { if (k === 'present') { if (patch.present === false) o.present = false; else delete o.present; } else if (k !== 'id' && k !== 'params') o[k] = patch[k]; }
+    return o; };
+  M.removeObservation = (obj, id) => { findObs(obj, id); obj.observations = obj.observations.filter(x => x.id !== id); return obj; };
+  M.setObsParam = (obj, id, key, value) => { const o = findObs(obj, id); o.params = o.params || {}; o.params[okKey(key)] = SM.isUnknown(value) ? null : value; return o; };
+  M.removeObsParam = (obj, id, key) => { const o = findObs(obj, id); delete (o.params || {})[key]; return o; };
+  M.renameObsParam = (obj, id, from, to) => { const o = findObs(obj, id), p = o.params = o.params || {}; if (from === to) return o; okKey(to); if (to in p) throw new Error('параметр «' + to + '» уже есть');
+    const n = {}; for (const k of Object.keys(p)) n[k === from ? to : k] = p[k]; o.params = n; return o; };
   M.addGoal = (obj, g) => { const x = Object.assign({id: SM.uid(), params: {}}, g); obj.goals.push(x); return x; };
 
   // Поверхности помещений выводятся из геометрии: пол и потолок у каждого помещения, по поверхности «стена» на каждую стену помещения.

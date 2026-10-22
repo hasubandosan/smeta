@@ -2,7 +2,7 @@
    lib = {layers:{kind:[[layer,подпись]]}, goalNames:{result:имя}, goals:{result:[processId]},
           processes:[{id,name,surface:kind,after?:[id],needed?:cond,requires?:cond,ask?:текст,blockedText?,effects:[{op:'ADD'|'REMOVE'|'SET',layer,value?} | {geo:'CREATE_OPENING',kind?,w?,h?} | {geo:'DESTROY_OPENING',kind?} | {geo:'SET_WALL',key:len|height|thickness|material,value} | {geo:'SET_ROOM',key:height|type,value}]}],
           rules:[{id,name,if:cond,ask?:текст,then:[{do:'REQUIRE'|'ADD_PROCESS'|'FORBID'|'RECOMMEND'|'WARN',process?,text?,because}]}]}
-   cond = {all:[]}|{any:[]}|{not:c}|{room:{key,op,value}}|{state:{kind,layer,is|in,quant:'all'|'any'}}|{goal:result}|{param:{goal,key,op,value}}
+   cond = {all:[]}|{any:[]}|{not:c}|{room:{key,op,value}}|{state:{kind,layer,is|in,quant:'all'|'any'}}|{goal:result}|{param:{goal,key,op,value}}|{obs:{what,kind?,key?,op?,value?}}
    Логика трёхзначная: T / F / U (неизвестно). UNKNOWN != NO. */
 (function (root) {
   'use strict';
@@ -55,6 +55,13 @@
     if (c.geo) { // числовые величины геометрии помещения: floor, ceiling, perimeter, wallArea, openingsArea, height; неизвестное → U
       const key = c.geo.key; let v; if (key === 'height') v = ctx.room.height; else { ctx.derived = ctx.derived || SM.geo.deriveRoom(ctx.obj.geometry, ctx.room); v = ctx.derived[key]; }
       const r = cmp(v, c.geo.op, c.geo.value); if (r === U) unk.push('геометрия.' + key); return r; }
+    if (c.obs) { // наблюдение (D40): {what, kind?, key?, op?, value?}; записей нет → U (не «нет»); все записи «нет» (present:false) → F; параметр неизвестен → U
+      const o = c.obs, SF = new Map(ctx.obj.surfaces.map(s => [s.id, s]));
+      const L = M.observationsOf(ctx.obj, ctx.room.id).filter(x => x.what === o.what && (!o.kind || (SF.get(x.target) || {}).kind === o.kind)), pos = L.filter(x => x.present !== false);
+      if (!pos.length) { if (L.length) return F; unk.push('наблюдение «' + (o.what || '?') + '»'); return U; }
+      if (!o.key) return T;
+      const vs = pos.map(x => cmp((x.params || {})[o.key], o.op || '==', o.value));
+      if (vs.includes(T)) return T; if (vs.includes(U)) { unk.push('наблюдение «' + o.what + '»: ' + o.key); return U; } return F; }
     if (c.goal) return ctx.goals.some(g => g.result === c.goal) ? T : F;
     if (c.param) { const g = ctx.goals.find(x => x.result === c.param.goal); if (!g) return F;
       const v = cmp((g.params || {})[c.param.key], c.param.op, c.param.value); if (v === U) unk.push(c.param.key); return v; }
