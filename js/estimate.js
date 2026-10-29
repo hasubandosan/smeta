@@ -8,7 +8,7 @@
   // scopeIds — поверхности, на которые направлен процесс (из плана правил); null = всё помещение
   E.vars = (S, item, tech, scopeIds, mods) => {
     const o = S.object, room = o.geometry.rooms.find(r => r.id === item.roomId), V = {};
-    if (room) { const d = SM.geo.deriveRoom(o.geometry, room); Object.assign(V, {floor: d.floor, ceiling: d.ceiling, perimeter: d.perimeter, walls: d.wallArea, height: room.height});
+    if (room) { const d = SM.geo.deriveRoom(o.geometry, room); Object.assign(V, {floor: d.floor, ceiling: d.ceiling, perimeter: d.perimeter, walls: d.wallArea, reveals: d.reveals, height: room.height});
       V.box = o.surfaces.filter(s => s.kind === 'box' && s.roomId === room.id).reduce((a, s) => a + 2 * (s.w + s.l) * s.h, 0) || null; }
     // Работа на части стен: площадь только выбранных стен (net из геометрии). Проём без привязки к стене = неизвестно, на какую стену он приходится → площадь неизвестна, не угадывается.
     if (room && scopeIds) { const ws = o.surfaces.filter(s => s.roomId === room.id && s.kind === 'wall' && !s.orphan), pick = ws.filter(s => scopeIds.includes(s.id));

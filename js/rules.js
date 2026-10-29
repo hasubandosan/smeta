@@ -52,7 +52,7 @@
       for (const x of L) { const v = R.evalCond(x, ctx, unk); if (v === (all ? F : T)) return v; if (v === U) r = U; } return r; }
     if (c.not) { const v = R.evalCond(c.not, ctx, unk); return v === T ? F : v === F ? T : U; }
     if (c.room) { const v = cmp(ctx.room[c.room.key], c.room.op, c.room.value); if (v === U) unk.push('помещение.' + c.room.key); return v; }
-    if (c.geo) { // числовые величины геометрии помещения: floor, ceiling, perimeter, wallArea, openingsArea, height; неизвестное → U
+    if (c.geo) { // числовые величины геометрии помещения: floor, ceiling, perimeter, wallArea, openingsArea, reveals, height; неизвестное → U
       const key = c.geo.key; let v; if (key === 'height') v = ctx.room.height; else { ctx.derived = ctx.derived || SM.geo.deriveRoom(ctx.obj.geometry, ctx.room); v = ctx.derived[key]; }
       const r = cmp(v, c.geo.op, c.geo.value); if (r === U) unk.push('геометрия.' + key); return r; }
     if (c.obs) { // наблюдение (D40): {what, kind?, key?, op?, value?}; записей нет → U (не «нет»); все записи «нет» (present:false) → F; параметр неизвестен → U

@@ -93,4 +93,5 @@ tab('state');C(`[data-a=del][data-p="object.goals.${M().goals.findIndex(g=>g.tar
 A(!M().geometry.rooms.some(x=>x.id===nid)&&!M().surfaces.some(s=>s.roomId===nid),'план: пустую комнату убрать можно, поверхности ушли');
 A(w.SM.store.snaps(w.localStorage).length>0,'план: точка отката создана перед правкой');}
 tab('state');A($('#main').textContent.includes('Черновая вода и канализация')&&$('#main').textContent.includes('Инженерия'),'состояние: инженерия санузла в плане');
+{tab('object');A($('#main').textContent.includes('Откосы')&&$('#main').textContent.includes('Толщина, м'),'объект: откосы и толщина стен показаны');chg('[data-p="object.geometry.walls.0.thickness"]','0.2');A(JSON.parse(w.localStorage.getItem('stroysmeta:model')).object.geometry.walls[0].thickness===0.2,'объект: толщина стены сохраняется');}
 process.exit(ok?0:1)})();

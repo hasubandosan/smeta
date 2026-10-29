@@ -21,7 +21,8 @@
   }
   const area = pts => Math.abs(pts.reduce((s, p, i) => { const q = pts[(i + 1) % pts.length]; return s + p.x * q.y - q.x * p.y; }, 0)) / 2;
 
-  // deriveRoom -> {closed, floor, ceiling, perimeter, wallArea, openingsArea, walls:[{id,len,height,gross,openings,net}], issues[]}; неизвестное = null
+  // deriveRoom -> {closed, floor, ceiling, perimeter, wallArea, openingsArea, reveals, walls:[{id,len,height,gross,openings,net}], issues[]}; неизвестное = null
+  // reveals — площадь откосов проёмов, м² (D43): полный периметр проёма × толщина его стены; нет проёмов → 0; нет стены/размера/толщины → null
   // Пересечение отрезков (без касания в общих вершинах): для проверки самопересечения контура
   const cross = (a, b, c) => (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
   const segX = (p1, p2, p3, p4) => { const d1 = cross(p3, p4, p1), d2 = cross(p3, p4, p2), d3 = cross(p1, p2, p3), d4 = cross(p1, p2, p4), e = 1e-9;
@@ -48,7 +49,7 @@
     polygon, validate,
     deriveRoom(model, room) {
       const issues = [], poly = polygon(model, room);
-      const R = {closed: poly.ok, floor: null, ceiling: null, perimeter: null, wallArea: null, openingsArea: null, walls: [], issues};
+      const R = {closed: poly.ok, floor: null, ceiling: null, perimeter: null, wallArea: null, openingsArea: null, reveals: null, walls: [], issues};
       if (poly.walls && poly.walls.every(w => !unk(w.len))) R.perimeter = poly.walls.reduce((s, w) => s + w.len, 0);
       if (!poly.ok) { issues.push(poly.issue); }
       else { R.floor = R.ceiling = area(poly.pts); }
@@ -70,6 +71,11 @@
       }
       if (loose) issues.push('есть проёмы без привязки к стене: общая площадь стен верна, по отдельным стенам — нет');
       if (wallOk && !looseBad) { R.wallArea = wa - loose; R.openingsArea = oa + loose; }
+      if (poly.walls) { let rv = 0, rvOk = true; const ids = new Set(poly.walls.map(w => w.id));
+        for (const o of model.openings || []) { const mine = o.wallId ? ids.has(o.wallId) : o.roomId === room.id; if (!mine) continue;
+          const wall = o.wallId ? poly.walls.find(w => w.id === o.wallId) : null;
+          if (!wall || unk(o.w) || unk(o.h) || unk(wall.thickness)) { rvOk = false; continue; } rv += 2 * (+o.w + +o.h) * +wall.thickness; }
+        R.reveals = rvOk ? rv : null; }
       return R;
     }
   };
