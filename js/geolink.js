@@ -20,10 +20,10 @@
     if (!v.ok) { const e = v.issues.find(x => x.level === 'error'); return {ok: false, message: 'Геометрия не проходит проверку: ' + (e ? e.text : '?')}; }
     const oldIds = new Set(old.rooms.map(r => r.id)), newIds = new Set(g.rooms.map(r => r.id)), removed = [...oldIds].filter(id => !newIds.has(id)), added = [...newIds].filter(id => !oldIds.has(id));
     for (const id of removed) { const use = G.roomUse(S, id); if (use.length) { const r = old.rooms.find(x => x.id === id); return {ok: false, message: 'Помещение «' + (r.name || id) + '» нельзя убрать: у него есть данные (' + use.join(', ') + '). Сначала уберите их.'}; } }
-    o.geometry = clone(g);
+    const ng = clone(g), pairs = SM.walls ? SM.walls.syncPairs(old, ng) : {changes: [], notes: []}; o.geometry = ng;
     o.surfaces = o.surfaces.filter(s => !removed.includes(s.roomId));      // у убранного помещения данных нет (проверено выше) — поверхности не нужны
-    const sync = M.syncSurfaces(o);
-    return {ok: true, removedRooms: removed, addedRooms: added, surfaces: sync};
+    const sync = M.syncSurfaces(o); if (SM.walls) SM.walls.ensureTypes(S);
+    return {ok: true, removedRooms: removed, addedRooms: added, surfaces: sync, pairs: pairs};
   };
   G.same = (S, g) => JSON.stringify(S.object.geometry) === JSON.stringify(g);
 })(typeof window !== 'undefined' ? window : globalThis);

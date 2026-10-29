@@ -39,6 +39,7 @@
 | `ui.js` + `index.html` | ✅ (срез) | новый интерфейс на новой модели; данные в `stroysmeta:model` (рядом копия `:backup`). Старый `old.html` не тронут |
 | `storage.js` | ✅ | `SM.store`: load/save (`stroysmeta:model`, копия `:backup`), `normalize/parse` (миграция, отказ для схемы из будущего), точки отката (`:snaps`), `replace` (подмена данных только через точку отката), облако Gist (`cloud(ls, fetch)`: `check/push/adopt`, чистая `decide`), `sheets` для Excel. `ls` и `fetch` передаются снаружи — тестируется в Node |
 | `planner.js`, `planner-ui.js` | ✅ (CAD-бот) | 2D-планировщик (`SM.planner`), контракт `docs/CAD_CONTRACT.md`; подключён во вкладке «План» (v0.29) |
+| `walls.js` | ✅ | `SM.walls`: типы стен (`S.wallTypes`, толщина по умолчанию), `setMaterial/setThickness/applyDefault`, пипетка `copyProps`, общие стены `pairOf/syncPairs/conflicts` (D44) |
 | `geolink.js` | ✅ | `SM.geolink`: `apply(S, geometry)` — принять геометрию из планировщика (validate → атомарная замена `S.object.geometry` → `syncSurfaces`; отказ, если убирается помещение с данными), `roomUse` (чем занято помещение), `same`. Точку отката и сохранение делает UI (D41) |
 
 ## Геометрия (принято)

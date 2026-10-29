@@ -3,7 +3,7 @@
 const {JSDOM}=require('jsdom'),fs=require('fs'),R=require('path').join(__dirname,'..')+'/';
 let html=fs.readFileSync(R+'index.html','utf8').replace(/<script src="[^"]+"><\/script>/g,'');
 const w=new JSDOM(html,{runScripts:'outside-only',url:'http://localhost/'}).window;w.alert=m=>{throw new Error(m)};
-for(const f of ['core','geometry','model','seeds','planner','planner-ui','geolink','rules','ver','estimate','pauses','routes','exec','fact','storage','kb','norms','legacy','libedit','ui'])w.eval(fs.readFileSync(R+'js/'+f+'.js','utf8'));
+for(const f of ['core','geometry','model','seeds','planner','planner-ui','walls','geolink','rules','ver','estimate','pauses','routes','exec','fact','storage','kb','norms','legacy','libedit','ui'])w.eval(fs.readFileSync(R+'js/'+f+'.js','utf8'));
 const $=s=>w.document.querySelector(s),C=s=>$(s).click(),chg=(s,v)=>{const e=$(s);e.value=v;e.dispatchEvent(new w.Event('change',{bubbles:true}))};
 const tab=t=>C(`[data-a=tab][data-p=${t}]`);let ok=1;const A=(c,m)=>{console.log((c?'OK   ':'FAIL ')+m);if(!c)ok=0};
 A($('#main').textContent.includes('15,75'),'объект: пол 15,75');
@@ -94,4 +94,13 @@ A(!M().geometry.rooms.some(x=>x.id===nid)&&!M().surfaces.some(s=>s.roomId===nid)
 A(w.SM.store.snaps(w.localStorage).length>0,'план: точка отката создана перед правкой');}
 tab('state');A($('#main').textContent.includes('Черновая вода и канализация')&&$('#main').textContent.includes('Инженерия'),'состояние: инженерия санузла в плане');
 {tab('object');A($('#main').textContent.includes('Откосы')&&$('#main').textContent.includes('Толщина, м'),'объект: откосы и толщина стен показаны');chg('[data-p="object.geometry.walls.0.thickness"]','0.2');A(JSON.parse(w.localStorage.getItem('stroysmeta:model')).object.geometry.walls[0].thickness===0.2,'объект: толщина стены сохраняется');}
+{const M=()=>JSON.parse(w.localStorage.getItem('stroysmeta:model')),G=()=>M().object.geometry;tab('object');A($('#main').textContent.includes('Типы стен'),'стены: справочник типов показан');
+const ti=M().wallTypes.findIndex(x=>x.id==='brick');chg(`[data-p="wallTypes.${ti}.thickness"]`,'0.25');A(M().wallTypes[ti].thickness===0.25,'стены: толщина типа по умолчанию задана');
+C('[data-a=type-add]');A(M().wallTypes.length>=4,'стены: тип добавлен');
+const w0=G().walls.find(x=>x.id===G().rooms[0].wallIds[0]),w1=G().walls.find(x=>x.id===G().rooms[0].wallIds[1]);
+A(w0.material==='brick'&&w0.thickness===0.2,'стены: исходные данные');C(`[data-a=wall-default][data-p="${w0.id}"]`);A(G().walls.find(x=>x.id===w0.id).thickness===0.25,'стены: «стандарт» подставляет толщину типа');
+chg(`[data-a=wall-mat][data-p="${w1.id}"]`,'brick');A(G().walls.find(x=>x.id===w1.id).material==='brick'&&G().walls.find(x=>x.id===w1.id).thickness===0.25,'стены: выбор материала подставляет стандарт');
+chg(`[data-p="object.geometry.walls.${G().walls.findIndex(x=>x.id===w1.id)}.thickness"]`,'0.12');A(G().walls.find(x=>x.id===w1.id).thickness===0.12,'стены: толщину можно изменить руками');
+C(`[data-a=wall-pick][data-p="${w0.id}"]`);A($('#main').textContent.includes('Пипетка включена'),'стены: пипетка включена');C(`[data-a=wall-paste][data-p="${w1.id}"]`);
+A(G().walls.find(x=>x.id===w1.id).thickness===0.25,'стены: пипетка скопировала толщину');C('[data-a=wall-pick][data-p=""]');}
 process.exit(ok?0:1)})();
