@@ -3,7 +3,7 @@
 const {JSDOM}=require('jsdom'),fs=require('fs'),R=require('path').join(__dirname,'..')+'/';
 let html=fs.readFileSync(R+'index.html','utf8').replace(/<script src="[^"]+"><\/script>/g,'');
 const w=new JSDOM(html,{runScripts:'outside-only',url:'http://localhost/'}).window;w.alert=m=>{throw new Error(m)};
-for(const f of ['core','geometry','model','seeds','planner','planner-ui','walls','geolink','rules','ver','estimate','pauses','routes','exec','fact','storage','kb','norms','legacy','libedit','ui'])w.eval(fs.readFileSync(R+'js/'+f+'.js','utf8'));
+for(const f of ['core','geometry','model','seeds','planner','planner-ui','layers','walls','geolink','rules','ver','estimate','pauses','routes','exec','fact','storage','kb','norms','legacy','libedit','ui'])w.eval(fs.readFileSync(R+'js/'+f+'.js','utf8'));
 const $=s=>w.document.querySelector(s),C=s=>$(s).click(),chg=(s,v)=>{const e=$(s);e.value=v;e.dispatchEvent(new w.Event('change',{bubbles:true}))};
 const tab=t=>C(`[data-a=tab][data-p=${t}]`);let ok=1;const A=(c,m)=>{console.log((c?'OK   ':'FAIL ')+m);if(!c)ok=0};
 A($('#main').textContent.includes('15,75'),'объект: пол 15,75');
@@ -103,4 +103,16 @@ chg(`[data-a=wall-mat][data-p="${w1.id}"]`,'brick');A(G().walls.find(x=>x.id===w
 chg(`[data-p="object.geometry.walls.${G().walls.findIndex(x=>x.id===w1.id)}.thickness"]`,'0.12');A(G().walls.find(x=>x.id===w1.id).thickness===0.12,'стены: толщину можно изменить руками');
 C(`[data-a=wall-pick][data-p="${w0.id}"]`);A($('#main').textContent.includes('Пипетка включена'),'стены: пипетка включена');C(`[data-a=wall-paste][data-p="${w1.id}"]`);
 A(G().walls.find(x=>x.id===w1.id).thickness===0.25,'стены: пипетка скопировала толщину');C('[data-a=wall-pick][data-p=""]');}
+{const M=()=>JSON.parse(w.localStorage.getItem('stroysmeta:model')),surf=()=>M().object.surfaces.find(s=>s.kind==='wall'&&!s.orphan);tab('object');A($('#main').textContent.includes('Слои отделки — типы'),'слои: справочник типов показан');
+const sid=surf().id;C(`details:has([data-a=layer-add][data-p="${sid}"]) summary`);chg(`[data-a=layer-add][data-p="${sid}"]`,'plaster');A((surf().layers||[]).length===1&&surf().layers[0].type==='plaster'&&surf().layers[0].status==='planned','слои: слой добавлен на стену');
+A($(`[data-a=layer-th][data-p="${sid}|${surf().layers[0].id}"]`).placeholder==='15','слои: толщина по умолчанию видна как подсказка (15 мм)');
+chg(`[data-a=layer-th][data-p="${sid}|${surf().layers[0].id}"]`,'12');A(Math.abs(surf().layers[0].thickness-0.012)<1e-12,'слои: толщину можно задать вручную (мм → м)');
+chg(`[data-a=layer-th][data-p="${sid}|${surf().layers[0].id}"]`,'');A(surf().layers[0].thickness===null,'слои: пусто — снова по умолчанию');
+chg(`[data-a=layer-status][data-p="${sid}|${surf().layers[0].id}"]`,'done');A(surf().layers[0].status==='done','слои: статус «сделано»');
+chg(`[data-a=layer-add][data-p="${sid}"]`,'paint');C(`[data-a=layer-up][data-p="${sid}|${surf().layers[1].id}"]`);A(surf().layers[0].type==='paint','слои: порядок меняется');
+const pi=M().layerTypes.findIndex(x=>x.id==='plaster');chg(`[data-a=ltype-th][data-p="plaster"]`,'20');A(Math.abs(M().layerTypes.find(x=>x.id==='plaster').thickness-0.02)<1e-12,'слои: стандарт типа меняется в мм');void pi;
+$(`[data-a=ltype-kind][data-p="plaster|floor"]`).checked=true;$(`[data-a=ltype-kind][data-p="plaster|floor"]`).dispatchEvent(new w.Event('change',{bubbles:true}));A(M().layerTypes.find(x=>x.id==='plaster').kinds.includes('floor'),'слои: тип назначается поверхности');
+tab('plan');const hp=w.SM.app.plan(),wid=surf().wallId;w.SM.app.side([wid]);A($('#planside').textContent.includes('Слои отделки этой стороны'),'план: боковая панель показывает слои выбранной стены');
+chg(`[data-a=layer-add][data-p="${sid}"]`,'putty');A(surf().layers.length===3&&w.SM.app.plan()===hp,'план: слой добавлен из панели, планировщик не пересоздан');
+C(`[data-a=layer-del][data-p="${sid}|${surf().layers[2].id}"]`);A(surf().layers.length===2&&w.SM.app.plan()===hp,'план: слой удалён из панели');}
 process.exit(ok?0:1)})();

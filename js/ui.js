@@ -29,17 +29,34 @@
       + `<td>${inp('object.geometry.walls.' + g.walls.indexOf(w) + '.thickness', w.thickness, {n: 1, w: 50})} ${d !== null && w.thickness !== d ? btn('wall-default', w.id, '↧ ' + f2(d)) : ''}`
       + ` ${pickWall === null ? btn('wall-pick', w.id, '🖉') : pickWall === w.id ? btn('wall-pick', '', '✕ пипетка') : btn('wall-paste', w.id, '⤓ применить')}`;
   }
+  /* Слои отделки (D45): один список на поверхность, от основания наружу; толщина по умолчанию от типа, вручную — в мм */
+  const mm = v => String(Math.round(v * 1000 * 100) / 100);
+  function layersEd(s) {
+    const L = SM.layers, list = L.of(s), tp = L.typesFor(S, s.kind), tot = L.total(S, s), key = ly => `${s.id}|${ly.id}`;
+    const row = ly => { const d = L.defaultOf(S, ly), cur = L.typeOf(S, ly.type), opts = tp.some(t => t.id === ly.type) ? tp : tp.concat(cur ? [cur] : []);
+      return `<div class=op style="display:flex;gap:4px;align-items:center;flex-wrap:wrap"><select data-a=layer-status data-p="${key(ly)}">${L.STATUS.map(([k, t]) => `<option value="${k}" ${k === ly.status ? 'selected' : ''}>${t}</option>`).join('')}</select>
+        <select data-a=layer-type data-p="${key(ly)}">${opts.map(t => `<option value="${esc(t.id)}" ${t.id === ly.type ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select>
+        <input data-a=layer-th data-p="${key(ly)}" inputmode=decimal value="${ly.thickness === null || ly.thickness === undefined ? '' : mm(ly.thickness)}" placeholder="${d === null ? '?' : mm(d)}" style="width:52px" title="Пусто — толщина по умолчанию от типа"> мм
+        <input data-a=layer-note data-p="${key(ly)}" value="${esc(ly.note || '')}" placeholder="заметка" style="width:110px">${btn('layer-up', key(ly), '↑')}${btn('layer-down', key(ly), '↓')}${btn('layer-del', key(ly), '✕')}</div>`; };
+    return (list.map(row).join('') || '<i class=hint>слоёв нет</i>') + `<div><select data-a=layer-add data-p="${s.id}"><option value="">＋ слой…</option>${tp.map(t => `<option value="${esc(t.id)}">${esc(t.name)}</option>`).join('')}</select>
+      <span class=hint>Итого: ${f2(tot.sum * 1000)} мм${tot.unknown.length ? ' + неизвестно у ' + tot.unknown.length + ' сл.' : ''}</span></div>`;
+  }
+  const layersCard = r => `<h4>Отделка — слои от основания наружу</h4>` + S.object.surfaces.filter(s => s.roomId === r.id && SM.layers.KINDS.includes(s.kind) && !s.orphan).map(s => `<details ${SM.layers.of(s).length ? 'open' : ''}><summary>${esc(s.name)} — ${SM.layers.of(s).length ? SM.layers.of(s).length + ' сл.' : 'слоёв нет'}</summary>${layersEd(s)}</details>`).join('');
+  const layerTypesCard = () => `<div class=card><h3>Слои отделки — типы и толщина по умолчанию</h3><p class=hint>Стартовые значения — ориентиры, проверьте и поправьте под свои материалы. Толщина слоя — по умолчанию от типа, у каждого слоя её можно задать вручную. Мм.</p>
+    <table><tr><th>Название<th>Толщина, мм<th>Для<th></tr>${(S.layerTypes || []).map((t, i) => `<tr><td>${inp('layerTypes.' + i + '.name', t.name, {w: 190})}<td><input data-a=ltype-th data-p="${esc(t.id)}" inputmode=decimal value="${t.thickness === null || t.thickness === undefined ? '' : mm(t.thickness)}" style="width:60px">
+      <td>${SM.layers.KINDS.map(k => `<label><input type=checkbox data-a=ltype-kind data-p="${esc(t.id)}|${k}" ${(t.kinds || []).includes(k) ? 'checked' : ''}>${{wall: 'стена', floor: 'пол', ceiling: 'потолок', box: 'короб'}[k]}</label>`).join(' ')}<td>${btn('ltype-del', t.id, '✕')}</tr>`).join('')}</table>${btn('ltype-add', '', '＋ Тип слоя')}</div>`;
   const typesCard = () => `<div class=card><h3>Типы стен — толщина по умолчанию</h3><p class=hint>Материал стены → стандартная толщина, м. При выборе материала толщина подставляется сама, её можно изменить у каждой стены. Пусто = неизвестно. ${pickWall ? '<b>Пипетка включена:</b> нажмите «⤓ применить» у другой стены — материал и толщина скопируются (у общей стены — и на пару).' : '🖉 — пипетка: взять материал и толщину стены и применить к другим.'}</p>
     <table><tr><th>Название<th>Толщина, м<th></tr>${(S.wallTypes || []).map((t, i) => `<tr><td>${inp('wallTypes.' + i + '.name', t.name, {w: 170})}<td>${inp('wallTypes.' + i + '.thickness', t.thickness, {n: 1, w: 70})}<td>${btn('del', 'wallTypes.' + i, '✕')}</tr>`).join('')}</table>${btn('type-add', '', '＋ Тип стены')}</div>`;
   function viewObject() {
     const o = S.object, g = o.geometry, D = SM.model.derive(o);
-    return `<h2>${inp('object.name', o.name, {w: 260})}</h2>` + typesCard() + g.rooms.map((r, ri) => { const d = D[ri];
+    return `<h2>${inp('object.name', o.name, {w: 260})}</h2>` + typesCard() + layerTypesCard() + g.rooms.map((r, ri) => { const d = D[ri];
       return `<div class=card><h3>${inp('object.geometry.rooms.' + ri + '.name', r.name)} высота, м ${inp('object.geometry.rooms.' + ri + '.height', r.height, {n: 1, w: 60})}</h3>
       <div class=kpi><span>Пол <b>${f2(d.floor)} м²</b></span><span>Потолок <b>${f2(d.ceiling)} м²</b></span><span>Стены <b>${f2(d.wallArea)} м²</b></span><span>Периметр <b>${f2(d.perimeter)} м</b></span><span>Откосы <b>${f2(d.reveals)} м²</b></span></div>
       ${d.issues.map(i => `<div class=warn>⚠ ${esc(i)}</div>`).join('')}
       <table><tr><th>Стена<th>Длина, м<th>Поворот в конце, °<th>Материал<th>Толщина, м<th></tr>${r.wallIds.map((wid, i) => { const wi = g.walls.findIndex(w => w.id === wid);
         return `<tr><td>${inp('object.geometry.walls.' + wi + '.name', g.walls[wi].name, {w: 80})}<td>${inp('object.geometry.walls.' + wi + '.len', g.walls[wi].len, {n: 1, w: 60})}<td>${inp('object.geometry.walls.' + wi + '.turn', g.walls[wi].turn, {n: 1, w: 50, ph: '90'})}<td>${wallCells(g.walls[wi])}<td>${btn('wall-del', ri + '.' + i, '✕')}</tr>`; }).join('')}</table>
       ${btn('wall-add', ri, '＋ Стена')}
+      ${layersCard(r)}
       <h4>Проёмы (двери, окна)</h4><table>${g.openings.map((p, i) => p.roomId === r.id ? `<tr><td>${inp('object.geometry.openings.' + i + '.kind', p.kind, {w: 80})}<td>${inp('object.geometry.openings.' + i + '.w', p.w, {n: 1, w: 55})} ×<td>${inp('object.geometry.openings.' + i + '.h', p.h, {n: 1, w: 55})} м<td>${sel('object.geometry.openings.' + i + '.wallId', p.wallId || '', [['', 'стена неизвестна']].concat(r.wallIds.map(wid => [wid, (g.walls.find(w => w.id === wid) || {}).name || 'стена'])))}<td>${btn('del', 'object.geometry.openings.' + i, '✕')}</tr>` : '').join('')}</table>
       ${btn('open-add', ri, '＋ Проём')}</div>`; }).join('') + btn('room-add', '', '＋ Помещение') +
       `<div class=card><h3>Короба и поверхности</h3>${o.surfaces.map((s, i) => s.kind === 'box' ? `<div>${esc(s.name)}: ${inp('object.surfaces.' + i + '.w', s.w, {n: 1, w: 50})} × ${inp('object.surfaces.' + i + '.l', s.l, {n: 1, w: 50})} × ${inp('object.surfaces.' + i + '.h', s.h, {n: 1, w: 50})} м ${s.assumed ? '<i class=hint>(размер взят условно — поправьте)</i>' : ''}</div>` : '').join('') || '<i class=hint>нет</i>'}</div>`;
@@ -322,24 +339,35 @@
   const VIEWS = {lib: viewLib, plan: viewPlan, object: viewObject, state: viewState, routes: viewRoutes, works: viewWorks, techs: viewTechs, materials: viewMaterials, estimate: viewEstimate, buy: viewBuy, kb: viewKb, data: viewData};
   const TABS = [['object', 'Объект'], ['plan', 'План'], ['state', 'Состояние'], ['routes', 'Маршруты'], ['works', 'Работы'], ['techs', 'Технологии'], ['lib', 'Библиотека'], ['materials', 'Материалы'], ['estimate', 'Смета'], ['buy', 'Закупка'], ['kb', 'Справочник'], ['data', 'Данные']];
   /* ===== План: 2D-планировщик (SM.planner, CAD_CONTRACT §5–6). Источник истины — S.object.geometry; планировщик только правит её через onChange (D41). ===== */
-  let planH = null;
+  let planH = null, planSel = [];
+  const sideRefresh = () => { if (planH) planH.setGeometry(S.object.geometry); renderSide(); };     // правка в боковой панели не пересоздаёт планировщик
+  const local = () => (tab === 'plan' ? sideRefresh() : render());
+  const PLAN_LOCAL = new Set(['wall-pick', 'wall-paste', 'wall-default', 'layer-up', 'layer-down', 'layer-del']);
+  function renderSide() {
+    const e = $('planside'); if (!e) return; const g = S.object.geometry, wid = planSel.find(id => g.walls.some(w => w.id === id)), w = wid && g.walls.find(x => x.id === wid);
+    if (!w) { e.innerHTML = '<div class=card><h3>Свойства</h3><p class=hint>Выберите стену на плане — здесь её материал, толщина и слои отделки.</p></div>'; return; }
+    const r = g.rooms.find(x => x.wallIds.includes(w.id)), s = SM.layers.surfaceOfWall(S, w.id);
+    e.innerHTML = `<div class=card><h3>${esc(w.name || 'Стена')}${r ? ' · ' + esc(r.name) : ''}</h3><table><tr><th>Материал<th>Толщина, м</tr><tr><td>${wallCells(w)}</tr></table>
+      <h4>Слои отделки этой стороны</h4>${s ? layersEd(s) : '<i class=hint>у стены нет поверхности</i>'}<p class=hint>Слои — со стороны комнаты «${r ? esc(r.name) : '?'}»; у общей стены другая сторона правится у её комнаты.</p></div>`;
+  }
   const planNote = (t, warn) => { const e = $('planmsg'); if (e) { e.textContent = t; e.className = warn ? 'warn' : 'hint'; } };
   function viewPlan() {
-    return '<h2>План</h2><p class=hint>Чертёж правит данные объекта (стены, проёмы, помещения): после каждой правки поверхности и смета пересчитываются сами. Ctrl+Z / ↶ — отмена на плане, пока вкладка открыта. Точка отката сохраняется не чаще раза в 5 минут (вкладка «Данные»).</p><div id=planhost style="height:68vh;min-height:360px;border:1px solid #cfd6df;border-radius:6px;overflow:hidden"></div><div id=planmsg class=hint></div>';
+    return '<h2>План</h2><p class=hint>Чертёж правит данные объекта (стены, проёмы, помещения): после каждой правки поверхности и смета пересчитываются сами. Ctrl+Z / ↶ — отмена на плане, пока вкладка открыта. Точка отката сохраняется не чаще раза в 5 минут (вкладка «Данные»).</p><div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-start"><div style="flex:1 1 520px;min-width:0"><div id=planhost style="height:68vh;min-height:360px;border:1px solid #cfd6df;border-radius:6px;overflow:hidden"></div><div id=planmsg class=hint></div></div><div id=planside style="flex:0 0 340px;max-width:100%"></div></div>';
   }
   function mountPlan() {
     const host = $('planhost'); if (!host || !SM.planner || !SM.planner.mount) return planNote('Модуль планировщика не загружен.', true);
     let busy = false;
-    planH = SM.planner.mount(host, {geometry: S.object.geometry, readOnly: false, onChange(g, meta) {
+    planSel = []; planH = SM.planner.mount(host, {geometry: S.object.geometry, readOnly: false, onSelect(ids) { planSel = ids || []; renderSide(); }, onChange(g, meta) {
       if (busy || SM.geolink.same(S, g)) return; busy = true;
       try { SM.store.snap(localStorage, S, false); const r = SM.geolink.apply(S, g);          // точка отката (не чаще раза в 5 мин) → проверка → применить → поверхности
         if (!r.ok) { planNote('⛔ ' + r.message + ' Правка отменена.', true); const h = planH; setTimeout(() => { if (h && h === planH) { if (h.canUndo()) h.undo(); else h.setGeometry(S.object.geometry); } }, 0); return false; }
         save(); const sf = r.surfaces, pr = r.pairs || {changes: [], notes: []}; if (pr.changes.length) setTimeout(() => { if (planH) planH.setGeometry(S.object.geometry); }, 0);
         planNote('✓ Сохранено' + (r.removedRooms.length ? '; убрано помещений: ' + r.removedRooms.length : '') + (sf.orphaned.length ? '; стен с данными убрано из контура: ' + sf.orphaned.length + ' (данные сохранены, в расчёты не входят)' : '') + '.' + (pr.changes.length ? ' Общие стены: материал и толщина выровнены у ' + pr.changes.length + ' стен.' : '') + (pr.notes.length ? ' ⚠ ' + pr.notes.join('; ') : ''), pr.notes.length > 0); }
       finally { busy = false; } }});
+    renderSide();
     if (!SM.geo.validate(S.object.geometry).ok) planNote('⚠ В данных объекта уже есть ошибки геометрии (см. вкладку «Объект»); пока они не исправлены, план может не принимать правки. Исправьте длины и углы.', true);
   }
-  SM.app = {plan: () => planH};
+  SM.app = {plan: () => planH, side: ids => { planSel = ids || []; renderSide(); }};     // side — для тестов (выбор на плане мышью в jsdom не воспроизвести)
   function render() { const y = scrollY; $('nav').innerHTML = TABS.map(([k, t]) => `<button class="${k === tab ? 'on' : ''}" data-a=tab data-p=${k}>${t}</button>`).join('') + '<span id=sync class=hint style="padding:8px;white-space:nowrap"></span>'; paintSync(); if (planH) { planH.destroy(); planH = null; } $('main').innerHTML = VIEWS[tab]() + obsList(); if (tab === 'plan') mountPlan(); scrollTo(0, y); }
   const NEW = {tech: () => ({id: uid(), name: 'Новая технология', params: [], ops: []}), op: () => ({id: uid(), name: '', unit: 'м2', price: null, qty: '', mats: []}), mat: () => ({id: uid(), matId: '', rate: ''}),
     route: () => ({id: uid(), name: 'Новый маршрут', roomId: S.object.geometry.rooms[0] ? S.object.geometry.rooms[0].id : '', steps: [], assume: []}), rstep: () => ({processId: '', techId: ''}), rassume: () => ({kind: 'floor', layer: '', value: 'YES'}),
@@ -366,6 +394,11 @@
     'wall-paste'(id) { if (pickWall) SM.walls.copyProps(S, pickWall, [id]); },
     'wall-default'(id) { SM.walls.applyDefault(S, id); },
     'type-add'() { SM.walls.addType(S, 'Новый тип'); },
+    'layer-up'(p) { const [s, l] = p.split('|'); SM.layers.move(S, s, l, -1); },
+    'layer-down'(p) { const [s, l] = p.split('|'); SM.layers.move(S, s, l, 1); },
+    'layer-del'(p) { const [s, l] = p.split('|'); SM.layers.remove(S, s, l); },
+    'ltype-add'() { SM.layers.addType(S, 'Новый слой'); },
+    'ltype-del'(id) { try { SM.layers.removeType(S, id); } catch (err) { alert(err.message); } },
     'wall-add'(p) { const g = S.object.geometry, r = g.rooms[+p], w = {id: uid(), name: 'Стена ' + (r.wallIds.length + 1), len: null, turn: 90, material: ''}; g.walls.push(w); r.wallIds.push(w.id); },
     'wall-del'(p) { const [ri, i] = p.split('.').map(Number), g = S.object.geometry, r = g.rooms[ri], id = r.wallIds[i]; r.wallIds.splice(i, 1); if (!g.rooms.some(x => x.wallIds.includes(id))) g.walls = g.walls.filter(w => w.id !== id); },
     'open-add'(p) { const g = S.object.geometry; g.openings.push({id: uid(), roomId: g.rooms[+p].id, wallId: null, kind: 'дверь', w: null, h: null}); },
@@ -461,11 +494,17 @@
     try { const next = SM.store.parse(await t.files[0].text());
       if (confirm('Заменить текущие данные данными из файла «' + t.files[0].name + '»? Текущие сохранятся в точку отката.')) S = SM.store.replace(localStorage, S, next); } catch (err) { alert('Не удалось загрузить: ' + err.message); }
     t.value = ''; render(); });
-  document.addEventListener('click', e => { const b = e.target.closest('button[data-a]'); if (!b) return; const a = A[b.dataset.a]; if (a) { a(b.dataset.p, b); if (!NOSAVE.has(b.dataset.a) && !b.dataset.a.startsWith('kb-')) save(); render(); } });
+  document.addEventListener('click', e => { const b = e.target.closest('button[data-a]'); if (!b) return; const a = A[b.dataset.a]; if (a) { a(b.dataset.p, b); if (!NOSAVE.has(b.dataset.a) && !b.dataset.a.startsWith('kb-')) save(); if (tab === 'plan' && PLAN_LOCAL.has(b.dataset.a)) sideRefresh(); else render(); } });
   document.addEventListener('change', e => { const t = e.target; if (t.dataset.a !== 'set') return; const k = t.dataset.p.split('.'), key = k.pop(), o = get(k.join('.') || '');
     let v = t.value.trim(); if (t.dataset.v) v = LX.parseValue(v, t.dataset.v === 'list'); else if (t.dataset.n) { v = v === '' ? null : parseFloat(v.replace(',', '.')); if (v !== null && !isFinite(v)) v = null; }
-    if (k.length === 1 && k[0] === 'bought' || k[0] === 'bought') S.bought[key] = v; else if (key === 'thickness' && k.slice(0, 3).join('.') === 'object.geometry.walls') { try { SM.walls.setThickness(S, o.id, v); } catch (err) { alert(err.message); } } else o[key] = v; save(); render(); });
-  document.addEventListener('change', e => { const t = e.target; if (t.dataset.a !== 'wall-mat') return; try { SM.walls.setMaterial(S, t.dataset.p, t.value); } catch (err) { alert(err.message); } save(); render(); });
+    if (k.length === 1 && k[0] === 'bought' || k[0] === 'bought') S.bought[key] = v; else if (key === 'thickness' && k.slice(0, 3).join('.') === 'object.geometry.walls') { try { SM.walls.setThickness(S, o.id, v); } catch (err) { alert(err.message); } } else o[key] = v; save(); local(); });
+  document.addEventListener('change', e => { const t = e.target; if (t.dataset.a !== 'wall-mat') return; try { SM.walls.setMaterial(S, t.dataset.p, t.value); } catch (err) { alert(err.message); } save(); local(); });
+  document.addEventListener('change', e => { const t = e.target, a = t.dataset.a; if (!a || !/^(layer-(add|status|type|th|note)|ltype-(th|kind))$/.test(a)) return; const [sid, lid] = (t.dataset.p || '').split('|'), L = SM.layers;
+    try { if (a === 'layer-add') { if (t.value) L.add(S, sid, t.value); } else if (a === 'layer-status') L.update(S, sid, lid, {status: t.value}); else if (a === 'layer-type') L.update(S, sid, lid, {type: t.value});
+      else if (a === 'layer-th' || a === 'ltype-th') { const raw = t.value.trim().replace(',', '.'), v = raw === '' ? null : parseFloat(raw) / 1000; if (raw !== '' && !isFinite(v)) throw new Error('толщина — число в мм');
+        if (a === 'layer-th') L.update(S, sid, lid, {thickness: v}); else { if (v !== null && !(v > 0)) throw new Error('толщина — положительное число, мм'); L.typeOf(S, t.dataset.p).thickness = v; } }
+      else if (a === 'layer-note') L.update(S, sid, lid, {note: t.value.trim()}); else if (a === 'ltype-kind') L.setTypeKind(S, sid, lid, t.checked); } catch (err) { alert(err.message); }
+    save(); local(); });
   document.addEventListener('change', e => { const t = e.target, a = t.dataset.a; if (a !== 'obs-present' && a !== 'obs-pkey') return; const [i, k] = t.dataset.p.split('|'), x = S.object.observations[+i];
     try { if (a === 'obs-present') SM.model.updateObservation(S.object, x.id, {present: t.value === 'yes'}); else SM.model.renameObsParam(S.object, x.id, k, t.value.trim()); } catch (err) { alert(err.message); } save(); render(); });
   document.addEventListener('change', e => { const t = e.target; if (t.dataset.a !== 'state') return; const [id, layer] = t.dataset.p.split('|'); SM.model.setState(S.object, id, layer, t.value); save(); render(); });

@@ -42,7 +42,7 @@
   // Стена убрана из помещения: поверхность без состояния/целей/наблюдений удаляется, иначе помечается orphan (её данные сохраняются, в расчёты она не входит).
   M.syncSurfaces = obj => {
     const g = obj.geometry, S = obj.surfaces, out = {added: [], removed: [], orphaned: []}, uid = SM.uid;
-    const used = id => Object.keys(obj.state).some(k => k.startsWith(id + '.')) || obj.goals.some(x => x.target === id) || obj.observations.some(x => x.target === id);
+    const used = id => Object.keys(obj.state).some(k => k.startsWith(id + '.')) || obj.goals.some(x => x.target === id) || obj.observations.some(x => x.target === id) || ((obj.surfaces.find(s => s.id === id) || {}).layers || []).length > 0;
     for (const r of g.rooms) {
       const ids = new Set(r.wallIds || []), mine = S.filter(s => s.roomId === r.id);
       for (const [kind, name] of [['floor', 'Пол'], ['ceiling', 'Потолок'], ['utilities', 'Инженерия']]) if (!mine.some(s => s.kind === kind)) { const s = {id: uid(), roomId: r.id, kind, name, wallId: null}; S.push(s); out.added.push(s.id); }

@@ -1,0 +1,37 @@
+// Слои отделки поверхностей (D45): node tests/layers.test.js
+const assert = require('assert'), SM = require('../js/core.js');
+for (const f of ['geometry', 'model', 'seeds', 'planner', 'rules', 'layers', 'walls', 'geolink', 'storage']) require('../js/' + f + '.js');
+let n = 0; const t = (name, f) => { f(); n++; console.log('OK   ' + name); }, L = SM.layers, M = SM.model;
+const proj = () => { const S = SM.store.fresh(); M.syncSurfaces(S.object); const r = S.object.geometry.rooms[0], by = k => S.object.surfaces.find(s => s.roomId === r.id && s.kind === k);
+  return {S, o: S.object, r, floor: by('floor'), wall: S.object.surfaces.find(s => s.roomId === r.id && s.kind === 'wall'), ceil: by('ceiling')}; };
+
+t('стартовый справочник слоёв: есть, ориентиры правятся, повторная загрузка ничего не меняет и не возвращает удалённое', () => { const {S} = proj(); assert.ok(S.layerTypes.length >= 10 && S.layerTypesVersion === L.VERSION);
+  assert.ok(S.layerTypes.every(x => x.thickness > 0 && x.kinds.length)); S.layerTypes.find(x => x.id === 'paint').thickness = 0.0005; S.layerTypes = S.layerTypes.filter(x => x.id !== 'wallpaper');
+  const N = SM.store.normalize(JSON.parse(JSON.stringify(S))); assert.strictEqual(N.layerTypes.find(x => x.id === 'paint').thickness, 0.0005); assert.ok(!N.layerTypes.some(x => x.id === 'wallpaper')); });
+t('старый проект без справочника получает его при загрузке', () => { const S = proj().S; delete S.layerTypes; delete S.layerTypesVersion; const N = SM.store.normalize(JSON.parse(JSON.stringify(S))); assert.ok(N.layerTypes.length >= 10); });
+t('слой: добавить/изменить/переставить/удалить; список один на поверхность, порядок от основания наружу', () => { const {S, wall} = proj();
+  const a = L.add(S, wall.id, 'plaster'), b = L.add(S, wall.id, 'wall_tile', {status: 'done'}), c = L.add(S, wall.id, 'paint', {at: 1}); assert.deepStrictEqual(wall.layers.map(x => x.type), ['plaster', 'paint', 'wall_tile']);
+  assert.strictEqual(a.status, 'planned'); assert.strictEqual(b.status, 'done'); assert.ok(L.move(S, wall.id, c.id, 1)); assert.deepStrictEqual(wall.layers.map(x => x.type), ['plaster', 'wall_tile', 'paint']); assert.ok(!L.move(S, wall.id, a.id, -1));
+  L.update(S, wall.id, a.id, {status: 'existing', note: 'старая'}); assert.strictEqual(a.status, 'existing'); L.remove(S, wall.id, b.id); assert.strictEqual(wall.layers.length, 2); assert.throws(() => L.remove(S, wall.id, b.id), /не найден/); });
+t('толщина слоя: по умолчанию от типа; ручное значение побеждает; пусто возвращает к умолчанию; тип без толщины → неизвестно', () => { const {S, wall} = proj(), ly = L.add(S, wall.id, 'plaster');
+  assert.strictEqual(L.thicknessOf(S, ly), 0.015); S.layerTypes.find(x => x.id === 'plaster').thickness = 0.02; assert.strictEqual(L.thicknessOf(S, ly), 0.02, 'слой следует за типом');
+  L.update(S, wall.id, ly.id, {thickness: 0.011}); S.layerTypes.find(x => x.id === 'plaster').thickness = 0.03; assert.strictEqual(L.thicknessOf(S, ly), 0.011, 'ручное остаётся');
+  L.update(S, wall.id, ly.id, {thickness: ''}); assert.strictEqual(ly.thickness, null); assert.strictEqual(L.thicknessOf(S, ly), 0.03); S.layerTypes.find(x => x.id === 'plaster').thickness = null; assert.strictEqual(L.thicknessOf(S, ly), null);
+  assert.throws(() => L.update(S, wall.id, ly.id, {thickness: -1}), /положительное/); assert.throws(() => L.update(S, wall.id, ly.id, {status: 'x'}), /статус/); });
+t('слой подходит только своим поверхностям; на инженерии слоёв нет', () => { const {S, wall, floor, ceil, o, r} = proj();
+  assert.throws(() => L.add(S, floor.id, 'wallpaper'), /не для этой поверхности/); assert.throws(() => L.add(S, ceil.id, 'screed'), /не для этой поверхности/); L.add(S, floor.id, 'screed'); L.add(S, wall.id, 'wallpaper'); L.add(S, ceil.id, 'paint');
+  const util = o.surfaces.find(s => s.roomId === r.id && s.kind === 'utilities'); assert.throws(() => L.add(S, util.id, 'paint'), /слоёв отделки нет/); assert.throws(() => L.add(S, wall.id, 'нет-такого'), /не найден/);
+  assert.deepStrictEqual(L.typesFor(S, 'floor').map(x => x.id).includes('wallpaper'), false); });
+t('итого по поверхности: сумма известных, неизвестные перечисляются; можно считать по статусам', () => { const {S, wall} = proj(); L.add(S, wall.id, 'plaster', {status: 'done'}); L.add(S, wall.id, 'wall_tile'); const q = L.add(S, wall.id, 'paint', {thickness: 0.001}); S.layerTypes.find(x => x.id === 'wall_tile').thickness = null;
+  let r = L.total(S, wall); assert.ok(Math.abs(r.sum - 0.016) < 1e-12); assert.strictEqual(r.unknown.length, 1); r = L.total(S, wall, ['done']); assert.ok(Math.abs(r.sum - 0.015) < 1e-12 && r.unknown.length === 0); void q; });
+t('тип слоя: добавить, назначить поверхности, удалить нельзя пока используется', () => { const {S, wall} = proj(), ty = L.addType(S, 'Мой слой'); assert.strictEqual(ty.thickness, null); L.setTypeKind(S, ty.id, 'floor', true); assert.deepStrictEqual(ty.kinds, ['wall', 'floor']);
+  L.setTypeKind(S, ty.id, 'wall', false); assert.deepStrictEqual(ty.kinds, ['floor']); assert.throws(() => L.setTypeKind(S, ty.id, 'sky', true), /неизвестный/); L.setTypeKind(S, ty.id, 'wall', true); L.add(S, wall.id, ty.id);
+  assert.throws(() => L.removeType(S, ty.id), /используется/); L.remove(S, wall.id, wall.layers[0].id); L.removeType(S, ty.id); assert.ok(!L.typeOf(S, ty.id)); });
+t('пипетка копирует слои на другую стену (новые id), общая стена — стороны независимы', () => { const {S, o, wall} = proj(), walls = o.surfaces.filter(s => s.kind === 'wall' && !s.orphan), other = walls[1]; L.add(S, wall.id, 'plaster'); L.add(S, wall.id, 'paint', {thickness: 0.001});
+  assert.strictEqual(SM.walls.copyProps(S, wall.wallId, [other.wallId]), 1); assert.deepStrictEqual(other.layers.map(x => x.type + x.thickness), ['plasternull', 'paint0.001']); assert.ok(other.layers.every((l, i) => l.id !== wall.layers[i].id));
+  L.update(S, other.id, other.layers[0].id, {note: 'моя'}); assert.strictEqual(wall.layers[0].note, '', 'исходная не меняется'); });
+t('слои — данные помещения: убрать помещение со слоями нельзя; убранная стена со слоями остаётся (orphan)', () => { const {S, wall, r} = proj(); L.add(S, wall.id, 'plaster');
+  const use = SM.geolink.roomUse(S, r.id); assert.ok(use.some(x => /слоёв отделки: 1/.test(x)));
+  const g = JSON.parse(JSON.stringify(S.object.geometry)); const R = g.rooms[0]; const wid = wall.wallId; R.wallIds = R.wallIds.filter(i => i !== wid); g.walls = g.walls.filter(w => w.id !== wid); g.openings = g.openings.filter(x => x.wallId !== wid);
+  SM.model.syncSurfaces({geometry: g, surfaces: S.object.surfaces, state: S.object.state, goals: S.object.goals, observations: S.object.observations}); assert.ok(S.object.surfaces.find(s => s.id === wall.id).orphan, 'поверхность со слоями не удаляется'); });
+console.log('Итого проверок: ' + n);

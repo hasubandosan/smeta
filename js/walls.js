@@ -26,8 +26,9 @@
   W.setThickness = (S, wallId, v) => { const w = wall(S, wallId); if (!unk(v) && !(+v > 0)) throw new Error('толщина — положительное число, м'); w.thickness = unk(v) ? null : +v; mirror(S.object.geometry, w, ['thickness']); return w; };
   W.applyDefault = (S, wallId) => { const w = wall(S, wallId), d = W.defaultThickness(S, w); if (d === null) return false; W.setThickness(S, wallId, d); return true; };
   // Пипетка: скопировать свойства (материал, толщину) со стены на другие стены.
-  W.copyProps = (S, fromId, toIds, keys) => { const f = wall(S, fromId), ks = (keys || KEYS).filter(k => KEYS.includes(k)); let n = 0;
-    for (const id of toIds) { if (id === fromId) continue; const t = wall(S, id); for (const k of ks) t[k] = unk(f[k]) ? (k === 'material' ? '' : null) : f[k]; mirror(S.object.geometry, t, ks); n++; } return n; };
+  W.copyProps = (S, fromId, toIds, keys) => { const f = wall(S, fromId), all = keys || KEYS.concat('layers'), ks = all.filter(k => KEYS.includes(k)); let n = 0;
+    for (const id of toIds) { if (id === fromId) continue; const t = wall(S, id); for (const k of ks) t[k] = unk(f[k]) ? (k === 'material' ? '' : null) : f[k]; mirror(S.object.geometry, t, ks);
+      if (all.includes('layers') && SM.layers) { const a = SM.layers.surfaceOfWall(S, fromId), b = SM.layers.surfaceOfWall(S, id); if (a && b) SM.layers.copyLayers(S, a.id, [b.id]); } n++; } return n; };
 
   // Согласование пар после правки на плане: изменённая сторона побеждает; неизвестное заполняется известным; расхождение двух известных значений — замечание, значения не трогаются.
   W.syncPairs = (oldG, newG) => { const changes = [], notes = [], done = new Set(), oldW = id => (oldG.walls || []).find(x => x.id === id);

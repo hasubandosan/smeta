@@ -1,6 +1,6 @@
 // Стены: типы (толщина по умолчанию), пипетка, общие стены (D44): node tests/walls.test.js
 const assert = require('assert'), SM = require('../js/core.js');
-for (const f of ['geometry', 'model', 'seeds', 'planner', 'rules', 'walls', 'geolink', 'storage']) require('../js/' + f + '.js');
+for (const f of ['geometry', 'model', 'seeds', 'planner', 'rules', 'layers', 'walls', 'geolink', 'storage']) require('../js/' + f + '.js');
 let n = 0; const t = (name, f) => { f(); n++; console.log('OK   ' + name); }, W = SM.walls, clone = x => JSON.parse(JSON.stringify(x));
 const proj = () => { const S = SM.store.fresh(); return S; };
 const two = () => { const mk = (p, ids) => ids.map((id, i) => ({id: p + id, len: i % 2 ? 3 : 4, turn: 90, name: 'С' + p + id, thickness: 0.2, material: 'brick'}));

@@ -12,6 +12,7 @@
     const nState = Object.keys(o.state).filter(k => sid.has(k.slice(0, k.indexOf('.')))).length;
     if (nPlan) out.push('работ в плане: ' + nPlan); if (nRoutes) out.push('маршрутов: ' + nRoutes); if (nGoals) out.push('целей: ' + nGoals); if (nState) out.push('отметок состояния: ' + nState); if (nObs) out.push('наблюдений: ' + nObs);
     const nBox = o.surfaces.filter(s => s.roomId === roomId && s.kind === 'box').length; if (nBox) out.push('коробов: ' + nBox);
+    const nLay = o.surfaces.filter(s => s.roomId === roomId).reduce((n, s) => n + (s.layers || []).length, 0); if (nLay) out.push('слоёв отделки: ' + nLay);
     return out; };
 
   // → {ok, message?, removedRooms, addedRooms, surfaces:{added,removed,orphaned}}
