@@ -92,4 +92,5 @@ A(h3.getGeometry().rooms.some(x=>x.id===nid),'план: после отказа 
 tab('state');C(`[data-a=del][data-p="object.goals.${M().goals.findIndex(g=>g.target===nid)}"]`);tab('plan');w.SM.app.plan().edit('removeRoom',nid);
 A(!M().geometry.rooms.some(x=>x.id===nid)&&!M().surfaces.some(s=>s.roomId===nid),'план: пустую комнату убрать можно, поверхности ушли');
 A(w.SM.store.snaps(w.localStorage).length>0,'план: точка отката создана перед правкой');}
+tab('state');A($('#main').textContent.includes('Черновая вода и канализация')&&$('#main').textContent.includes('Инженерия'),'состояние: инженерия санузла в плане');
 process.exit(ok?0:1)})();

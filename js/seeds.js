@@ -26,10 +26,11 @@
     library() {
       const st = (kind, layer, is, quant) => ({state: {kind, layer, is, quant}}), E = (op, layer) => ({op, layer});
       const P = (id, name, surface, o) => Object.assign({id, name, surface, effects: []}, o);
-      return {version: 3, demo: true,
+      return {version: 4, demo: true,
         layers: {floor: [['existing_floor', 'Старый пол'], ['slab_waterproofing', 'Гидроизоляция плиты (под стяжку)'], ['waterproofing', 'Гидроизоляция (по стяжке)'], ['heating', 'Тёплый пол'], ['screed', 'Стяжка'], ['tile', 'Плитка']],
           wall: [['existing_tile', 'Старая плитка'], ['base_prepared', 'Основание подготовлено'], ['tile', 'Плитка'], ['painted', 'Окрашено']],
-          ceiling: [['gkl', 'ГКЛ'], ['prepared', 'Подготовлено под краску'], ['painted', 'Окрашено']], box: [['base_prepared', 'Основание подготовлено'], ['painted', 'Окрашено']]},
+          ceiling: [['gkl', 'ГКЛ'], ['prepared', 'Подготовлено под краску'], ['painted', 'Окрашено']], box: [['base_prepared', 'Основание подготовлено'], ['painted', 'Окрашено']],
+          utilities: [['rough_plumbing', 'Черновая вода и канализация'], ['install_frame', 'Инсталляция'], ['rough_electric', 'Черновая электрика'], ['finish_electric', 'Чистовая электрика'], ['finish_plumbing', 'Чистовая сантехника'], ['sealing', 'Герметизация швов и примыканий']]},
         goalNames: {tile_floor: 'плитка на полу', wall_tile: 'плитка на стенах', paint_wall_zone: 'окраска зоны стены', gkl_ceiling_paint: 'потолок из ГКЛ под покраску', paint: 'покраска'},
         goals: {tile_floor: ['demolish_floor', 'screed_new', 'tile_floor_lay'], wall_tile: ['demolish_wall_tile', 'prepare_wall_base', 'tile_wall'], paint_wall_zone: ['prepare_wall_base', 'paint_wall_zone'],
           gkl_ceiling_paint: ['gkl_ceiling', 'prep_ceiling', 'paint_ceiling'], paint: ['paint_box']},
@@ -49,6 +50,13 @@
           P('gkl_ceiling', 'Потолок из ГКЛ', 'ceiling', {effects: [E('ADD', 'gkl')]}),
           P('prep_ceiling', 'Подготовка потолка под краску', 'ceiling', {after: ['gkl_ceiling'], effects: [E('ADD', 'prepared')]}),
           P('paint_ceiling', 'Покраска потолка', 'ceiling', {after: ['prep_ceiling'], effects: [E('ADD', 'painted')]}),
+          // v4 (D42): инженерия санузла по этапам справочника (2.3.2, 2.3.4, 2.4.1/2.4.2/2.4.5, 4.1.1, 4.1.3). Жёсткий порядок только внутри цепочки инженерии; порядок относительно пола — рекомендация (правила ниже).
+          P('rough_plumbing', 'Черновая вода и канализация', 'utilities', {effects: [E('ADD', 'rough_plumbing')]}),
+          P('install_frame', 'Инсталляция', 'utilities', {after: ['rough_plumbing'], effects: [E('ADD', 'install_frame')]}),
+          P('rough_electric', 'Черновая электрика помещения', 'utilities', {effects: [E('ADD', 'rough_electric')]}),
+          P('finish_electric', 'Чистовая электрика', 'utilities', {after: ['rough_electric'], effects: [E('ADD', 'finish_electric')]}),
+          P('finish_plumbing', 'Чистовая сантехника', 'utilities', {after: ['install_frame'], effects: [E('ADD', 'finish_plumbing')]}),
+          P('sealing', 'Герметизация швов и примыканий', 'utilities', {after: ['finish_plumbing'], effects: [E('ADD', 'sealing')]}),
           P('paint_box', 'Покраска короба', 'box', {requires: st('box', 'base_prepared', 'YES'), ask: 'Подготовлено ли основание короба под покраску?', blockedText: 'Основание короба не подготовлено', effects: [E('ADD', 'painted')]})],
         rules: [
           {id: 'wet_waterproof', name: 'Влажная зона', if: {all: [{room: {key: 'type', op: '==', value: 'bathroom'}}, {goal: 'tile_floor'}]},
@@ -61,6 +69,11 @@
             then: [{do: 'ADD_PROCESS', process: 'heating_water', because: 'Выбран водяной тёплый пол'}]},
           {id: 'old_floor', name: 'Старый пол', ask: 'Есть ли в помещении старый пол?', if: {all: [{goal: 'tile_floor'}, {param: {goal: 'tile_floor', key: 'newScreed', op: '==', value: true}}, st('floor', 'existing_floor', 'YES')]},
             then: [{do: 'ADD_PROCESS', process: 'demolish_floor', because: 'В помещении старый пол, а выбрана новая стяжка — старый нужно демонтировать'}]},
+          {id: 'bath_engineering', name: 'Инженерия санузла', if: {room: {key: 'type', op: '==', value: 'bathroom'}},
+            then: [['rough_plumbing', '2.3.2'], ['install_frame', '2.3.4'], ['rough_electric', '2.4.1, 2.4.2, 2.4.5'], ['finish_electric', '4.1.1'], ['finish_plumbing', '4.1.3'], ['sealing', '3.2.3, 4.1.3']]
+              .map(([process, ref]) => ({do: 'ADD_PROCESS', process, because: 'Санузел: этап справочника ' + ref})).concat([{do: 'RECOMMEND', text: 'Порядок инженерии: черновые вода, канализация и инсталляция — до гидроизоляции пола и плитки; чистовая электрика — после отделки стен; чистовая сантехника — после чистового пола и затирки; герметизация — последней', because: 'Справочник (2.3.2, 2.3.4, 3.2.1, 4.1.1, 4.1.3); жёстко не задано — это рекомендация'}])},
+          {id: 'plumbing_after_waterproof', name: 'Черновая сантехника позже гидроизоляции', if: {all: [{room: {key: 'type', op: '==', value: 'bathroom'}}, st('floor', 'waterproofing', 'YES'), {not: st('utilities', 'rough_plumbing', 'YES')}]},
+            then: [{do: 'WARN', text: 'Гидроизоляция пола уже сделана, а черновая вода и канализация — нет', because: 'Справочник (3.2.1): к гидроизоляции коммуникации должны быть смонтированы и проверены под давлением'}]},
           {id: 'screed_thick', name: 'Толщина стяжки', ask: 'Какая толщина новой стяжки, мм?', if: {param: {goal: 'tile_floor', key: 'screedThickness', op: '>', value: 50}},
             then: [{do: 'RECOMMEND', text: 'Армирование стяжки', because: 'Толщина стяжки больше 50 мм'}]}]};
     },
@@ -74,7 +87,7 @@
       // проёмы: на какой стене — неизвестно (wallId пуст)
       [['дверь', 0.9, 2.1], ['дверь', 0.8, 2.2], ['окно', 0.5, 0.3]].forEach(([kind, ww, h]) => g.openings.push({id: SM.uid(), roomId: room.id, wallId: null, kind, w: ww, h}));
       const S = (kind, name, wallId) => { const s = {id: SM.uid(), roomId: room.id, kind, name, wallId: wallId || null}; o.surfaces.push(s); return s; };
-      const floor = S('floor', 'Пол'), ceil = S('ceiling', 'Потолок'), box = Object.assign(S('box', 'Короб'), {w: 0.6, l: 0.4, h: 2.7, assumed: true}), ws = w.map((x, i) => S('wall', 'Стена ' + (i + 1), x.id));
+      const floor = S('floor', 'Пол'), ceil = S('ceiling', 'Потолок'), util = S('utilities', 'Инженерия'), box = Object.assign(S('box', 'Короб'), {w: 0.6, l: 0.4, h: 2.7, assumed: true}), ws = w.map((x, i) => S('wall', 'Стена ' + (i + 1), x.id));
       // состояние: известно только то, что сказал владелец; остальное UNKNOWN по умолчанию
       M.setState(o, floor.id, 'existing_floor', 'YES');
       M.addObservation(o, {target: floor.id, what: 'existing_floor', params: {thickness: null}, note: 'существующий пол, нужен демонтаж'});

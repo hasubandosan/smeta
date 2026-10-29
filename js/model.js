@@ -45,7 +45,7 @@
     const used = id => Object.keys(obj.state).some(k => k.startsWith(id + '.')) || obj.goals.some(x => x.target === id) || obj.observations.some(x => x.target === id);
     for (const r of g.rooms) {
       const ids = new Set(r.wallIds || []), mine = S.filter(s => s.roomId === r.id);
-      for (const [kind, name] of [['floor', 'Пол'], ['ceiling', 'Потолок']]) if (!mine.some(s => s.kind === kind)) { const s = {id: uid(), roomId: r.id, kind, name, wallId: null}; S.push(s); out.added.push(s.id); }
+      for (const [kind, name] of [['floor', 'Пол'], ['ceiling', 'Потолок'], ['utilities', 'Инженерия']]) if (!mine.some(s => s.kind === kind)) { const s = {id: uid(), roomId: r.id, kind, name, wallId: null}; S.push(s); out.added.push(s.id); }
       for (const wid of ids) { const w = g.walls.find(x => x.id === wid); if (!w) continue; const ex = mine.find(s => s.kind === 'wall' && s.wallId === wid);
         if (!ex) { const s = {id: uid(), roomId: r.id, kind: 'wall', name: w.name || 'Стена', wallId: wid}; S.push(s); out.added.push(s.id); } else { if (w.name) ex.name = w.name; delete ex.orphan; } }
       for (const s of mine.filter(x => x.kind === 'wall' && x.wallId && !ids.has(x.wallId))) {

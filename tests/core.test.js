@@ -103,7 +103,7 @@ t('обновление библиотеки v2→v3: порядок пола м
   P('tile_floor_lay').after = ['screed_new', 'MY_STEP']; /* правка руками */ const L = SM.seeds.upgradeLibrary(old), Q = id => L.processes.find(p => p.id === id);
   assert.deepStrictEqual(Q('screed_new').after, ['demolish_floor', 'heating_water']); assert.deepStrictEqual(Q('waterproof_floor').after, ['screed_new']); assert.deepStrictEqual(Q('heating_water').after, ['demolish_floor']);
   assert.deepStrictEqual(Q('tile_floor_lay').after, ['screed_new', 'MY_STEP']); assert.deepStrictEqual(L.upgradeSkipped, ['tile_floor_lay.after']); assert.ok(Q('waterproof_slab')); assert.ok(L.layers.floor.some(l => l[0] === 'slab_waterproofing')); assert.ok(Q('demolish_floor').effects.some(e => e.layer === 'slab_waterproofing'));
-  assert.strictEqual(L.version, 3); assert.strictEqual(SM.seeds.upgradeLibrary(L), L); });
+  assert.strictEqual(L.version, SM.seeds.library().version); assert.strictEqual(SM.seeds.upgradeLibrary(L), L); });
 t('плитка на стенах разблокируется по цепочке, когда основание подготовлено', () => { const {o, lib, rid} = bath();
   o.surfaces.filter(s => s.kind === 'wall').forEach(s => SM.model.setState(o, s.id, 'existing_tile', 'NO'));
   assert.strictEqual(st(SM.rules.plan(o, lib, rid), 'prepare_wall_base').status, 'READY');
@@ -136,7 +136,7 @@ t('маршруты: реальный объект не меняется; пос
   const B = C.results.find(x => x.route.id === 'B'); assert.ok(B.ready.includes('Гидроизоляция пола (по стяжке, под плитку)') && !B.ready.includes('Плитка на полу')); /* D34: после ремонта стяжки плитку открывает гидроизоляция */ });
 t('маршруты: неизвестные данные → итог неполный, «дешевле» не объявляется', () => { const {S, rid} = rt(); S.techs[3].ops[0].qty = 'nope'; assert.strictEqual(SM.routes.compareAll(S, rid).best, null); });
 t('обновление библиотеки только добавляет, не затирает правки пользователя', () => { const old = SM.seeds.library(); old.version = 1; old.processes = old.processes.filter(p => p.id !== 'repair_screed'); old.processes[0].name = 'МОЁ НАЗВАНИЕ';
-  const L = SM.seeds.upgradeLibrary(old); assert.ok(L.processes.some(p => p.id === 'repair_screed')); assert.strictEqual(L.processes[0].name, 'МОЁ НАЗВАНИЕ'); assert.strictEqual(L.version, 3); });
+  const L = SM.seeds.upgradeLibrary(old); assert.ok(L.processes.some(p => p.id === 'repair_screed')); assert.strictEqual(L.processes[0].name, 'МОЁ НАЗВАНИЕ'); assert.strictEqual(L.version, SM.seeds.library().version); });
 console.log('Итого проверок: ' + n);
 
 /* ---- выполнение и приёмка ---- */

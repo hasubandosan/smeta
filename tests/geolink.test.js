@@ -10,9 +10,9 @@ t('те же данные — «не изменилось»; правка при
   assert.ok(G.same(S, g)); assert.strictEqual(o.geometry.rooms[0].height, 3); assert.strictEqual(o.geometry.walls[0].thickness, 0.2); g.walls[0].thickness = 9; assert.strictEqual(o.geometry.walls[0].thickness, 0.2, 'копия, а не ссылка'); });
 t('отказ: геометрия с ошибкой — проект не меняется', () => { const {S, o, r} = fresh(), snap = JSON.stringify(o);
   const res = G.apply(S, edit(S, g => { g.walls.find(w => w.id === r.wallIds[0]).len = -1; })); assert.ok(!res.ok && /проверку/.test(res.message)); assert.strictEqual(JSON.stringify(o), snap); });
-t('новое помещение: появляются пол, потолок и стены в поверхностях', () => { const {S, o} = fresh(), ns = o.surfaces.length;
+t('новое помещение: появляются пол, потолок, инженерия и стены в поверхностях', () => { const {S, o} = fresh(), ns = o.surfaces.length;
   const res = G.apply(S, edit(S, g => { const ws = [1, 2, 3, 4].map(i => ({id: 'nw' + i, len: 2, turn: 90, name: 'Н' + i})); g.walls.push(...ws); g.rooms.push({id: 'nr', name: 'Новая', height: 2.5, wallIds: ws.map(w => w.id)}); }));
-  assert.ok(res.ok && res.addedRooms.join() === 'nr'); assert.strictEqual(o.surfaces.length, ns + 6); assert.ok(o.surfaces.filter(s => s.roomId === 'nr').length === 6); });
+  assert.ok(res.ok && res.addedRooms.join() === 'nr'); assert.strictEqual(o.surfaces.length, ns + 7); assert.ok(o.surfaces.filter(s => s.roomId === 'nr').length === 7); });
 t('убрать пустое помещение можно (поверхности уходят); с данными — отказ с причиной, проект цел', () => { const {S, o} = fresh();
   G.apply(S, edit(S, g => { const ws = [1, 2, 3, 4].map(i => ({id: 'nw' + i, len: 2, turn: 90})); g.walls.push(...ws); g.rooms.push({id: 'nr', name: 'Новая', height: 2.5, wallIds: ws.map(w => w.id)}); }));
   const drop = (S, id) => edit(S, g => { const r = g.rooms.find(x => x.id === id), ids = new Set(r.wallIds); g.rooms = g.rooms.filter(x => x.id !== id); g.walls = g.walls.filter(w => !ids.has(w.id)); g.openings = g.openings.filter(x => !ids.has(x.wallId) && x.roomId !== id); });

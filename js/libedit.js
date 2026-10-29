@@ -6,7 +6,7 @@
   X.COND_TYPES = [['all', 'все условия (И)'], ['any', 'любое из условий (ИЛИ)'], ['not', 'НЕ'], ['room', 'свойство помещения'], ['state', 'состояние поверхности'], ['goal', 'есть цель'], ['param', 'параметр цели'], ['geo', 'размер помещения'], ['obs', 'наблюдение (что уже есть)']];
   X.GEO_KEYS = [['height', 'высота, м'], ['floor', 'площадь пола, м²'], ['ceiling', 'площадь потолка, м²'], ['perimeter', 'периметр, м'], ['wallArea', 'площадь стен, м²'], ['openingsArea', 'площадь проёмов, м²']];
   X.ROOM_KEYS = [['type', 'тип'], ['height', 'высота, м'], ['name', 'название']];
-  X.KIND_RU = {floor: 'пол', wall: 'стены', ceiling: 'потолок', box: 'короб'};
+  X.KIND_RU = {floor: 'пол', wall: 'стены', ceiling: 'потолок', box: 'короб', utilities: 'инженерия'};
   const TRI_RU = {YES: 'да', NO: 'нет', UNKNOWN: 'неизвестно', NOT_APPLICABLE: 'не применимо'};
   X.condType = c => (c ? X.COND_TYPES.map(t => t[0]).find(k => k in c) || null : null);
   X.defaultCond = (type, lib) => { const g0 = Object.keys((lib || {}).goalNames || {})[0] || '';

@@ -111,7 +111,7 @@
   function viewState() {
     const o = S.object, lib = S.library;
     return '<h2>Состояние и что дальше</h2><p class=hint>«Неизвестно» ≠ «нет»: система не считает неизвестное отсутствующим. Отметьте то, что знаете — список «что дальше» обновится.</p>' + o.geometry.rooms.map(r => {
-      const P = SM.rules.plan(o, lib, r.id), kinds = ['floor', 'wall', 'ceiling', 'box'].filter(k => o.surfaces.some(x => x.roomId === r.id && x.kind === k && !x.orphan));
+      const P = SM.rules.plan(o, lib, r.id), kinds = ['floor', 'wall', 'ceiling', 'box', 'utilities'].filter(k => o.surfaces.some(x => x.roomId === r.id && x.kind === k && !x.orphan));
       const groups = ['READY', 'NEEDS_INFO', 'BLOCKED', 'DONE'].map(k => { const L = P.items.filter(i => i.status === k); if (!L.length) return '';
         return `<h4>${ST[k][0]} (${L.length})</h4>` + L.map(i => `<div class=op>${ST[k][1]} <b>${esc(i.name)}</b> ${i.scope ? '<span class=hint>— ' + i.scope.map(id => esc((o.surfaces.find(x => x.id === id) || {}).name)).join(', ') + '</span>' : ''} ${k === 'READY' ? btn('complete', r.id + '|' + i.id, 'Отметить выполненным') : ''}
           ${k !== 'DONE' ? techPick(r.id, i.id) : ''}
@@ -124,7 +124,7 @@
         ${obsEd(r)}
         <h4>Текущее состояние</h4>${kinds.map(k => o.surfaces.filter(x => x.roomId === r.id && x.kind === k && !x.orphan).map(sf => `<div class=op><b>${esc(sf.name)}</b> ${(lib.layers[k] || []).map(([ly, lb]) => `<span style="white-space:nowrap">${esc(lb)}: <select data-a=state data-p="${sf.id}|${ly}">${TRI_OPTS.map(([v, t]) => `<option value=${v} ${SM.model.getState(o, sf.id, ly) === v ? 'selected' : ''}>${t}</option>`).join('')}</select></span>`).join(' ')}</div>`).join('')).join('')}</div>`; }).join('');
   }
-  const KINDS = [['floor', 'пол'], ['wall', 'стены'], ['ceiling', 'потолок'], ['box', 'короб']];
+  const KINDS = [['floor', 'пол'], ['wall', 'стены'], ['ceiling', 'потолок'], ['box', 'короб'], ['utilities', 'инженерия']];
   /* Паузы между процессами: ввод вручную; текст справочника («что до», «защита») — только подсказка (D27, D32). */
   const timeCell = t => { if (!t || t.minDays === null && !t.steps.length) return '—'; const lo = t.minDays === null ? '?' : f2(t.minDays), hi = t.maxDays === null ? '' : ' … ' + f2(t.maxDays);
     return (t.steps.length < 2 ? '—' : 'от ' + lo + hi) + (t.unknown.length ? ' <span class=warn title="' + esc(t.unknown.join('; ')) + '">⚠</span>' : ''); };
