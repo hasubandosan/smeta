@@ -9,7 +9,7 @@
 
   St.memStorage = () => { const m = {}; return {getItem: k => (k in m ? m[k] : null), setItem: (k, v) => { m[k] = String(v); }, removeItem: k => { delete m[k]; }, _m: m}; };
 
-  St.fresh = () => St.withTypes({object: SM.seeds.bathroom(), library: SM.seeds.library(), routes: [], pauses: [], techs: [], materials: [], plan: [], approved: [], techVersions: {}, wallTypes: [],
+  St.fresh = () => St.withTypes({object: SM.seeds.bathroom(), library: SM.seeds.library(), routes: [], pauses: [], techs: [], materials: [], plan: [], approved: [], techVersions: {}, wallTypes: [], dimMode: 'rough',
     fin: {waste: 0, reserve: 0, overhead: 0, discount: 0, vat: 0}, bought: {}});
   St.withTypes = S => { if (SM.walls) SM.walls.ensureTypes(S); if (SM.layers) SM.layers.ensureTypes(S); return S; };
 
@@ -20,7 +20,7 @@
     for (const k of ['routes', 'pauses', 'techs', 'materials', 'plan', 'approved']) if (!Array.isArray(d[k])) d[k] = [];
     d.techVersions = d.techVersions && typeof d.techVersions === 'object' ? d.techVersions : {}; if (SM.ver) SM.ver.pinAll(d);
     d.fin = d.fin || {waste: 0, reserve: 0, overhead: 0, discount: 0, vat: 0}; d.bought = d.bought || {};
-    d.wallTypes = Array.isArray(d.wallTypes) ? d.wallTypes : []; St.withTypes(d);
+    d.wallTypes = Array.isArray(d.wallTypes) ? d.wallTypes : []; if (!['rough', 'now', 'finish'].includes(d.dimMode)) d.dimMode = 'rough'; St.withTypes(d);
     return d;
   };
   St.parse = text => { let d; try { d = JSON.parse(text); } catch (e) { throw new Error('файл повреждён или это не JSON'); } return St.normalize(d); };

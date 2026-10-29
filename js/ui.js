@@ -29,6 +29,13 @@
       + `<td>${inp('object.geometry.walls.' + g.walls.indexOf(w) + '.thickness', w.thickness, {n: 1, w: 50})} ${d !== null && w.thickness !== d ? btn('wall-default', w.id, '↧ ' + f2(d)) : ''}`
       + ` ${pickWall === null ? btn('wall-pick', w.id, '🖉') : pickWall === w.id ? btn('wall-pick', '', '✕ пипетка') : btn('wall-paste', w.id, '⤓ применить')}`;
   }
+  /* Чистовые размеры (D46): три колонки, режим для сметы */
+  const dimSel = () => `<label>Размеры для расчёта: <select data-a=dim-mode>${SM.finish.MODES.map(([k, t]) => `<option value="${k}" ${S.dimMode === k ? 'selected' : ''}>${t}</option>`).join('')}</select></label> <span class=hint title="«Как введено» — длины и высота без слоёв; «Сейчас» — минус слои «есть сейчас» и «сделано»; «Финиш» — минус все слои, включая запланированные">?</span>`;
+  function dimsTable(r) {
+    if (!S.object.surfaces.some(s => s.roomId === r.id && SM.layers.of(s).length)) return '';
+    const c = SM.finish.compare(S, r.id), row = (t, f, u) => `<tr><td>${t}<td>${f2(f(c.rough))}<td>${f2(f(c.now))}<td>${f2(f(c.finish))}<td>${u}</tr>`, iss = [...new Set([].concat(c.now.issues, c.finish.issues))];
+    return `<table><tr><th>Размеры с учётом слоёв<th>Как введено<th>Сейчас<th>Финиш<th></tr>${row('Пол и потолок', d => d.floor, 'м²')}${row('Стены без проёмов', d => d.wallArea, 'м²')}${row('Периметр', d => d.perimeter, 'м')}${row('Высота', d => d.height, 'м')}</table>` + iss.map(x => `<div class=warn>⚠ ${esc(x)}</div>`).join('');
+  }
   /* Слои отделки (D45): один список на поверхность, от основания наружу; толщина по умолчанию от типа, вручную — в мм */
   const mm = v => String(Math.round(v * 1000 * 100) / 100);
   function layersEd(s) {
@@ -49,9 +56,10 @@
     <table><tr><th>Название<th>Толщина, м<th></tr>${(S.wallTypes || []).map((t, i) => `<tr><td>${inp('wallTypes.' + i + '.name', t.name, {w: 170})}<td>${inp('wallTypes.' + i + '.thickness', t.thickness, {n: 1, w: 70})}<td>${btn('del', 'wallTypes.' + i, '✕')}</tr>`).join('')}</table>${btn('type-add', '', '＋ Тип стены')}</div>`;
   function viewObject() {
     const o = S.object, g = o.geometry, D = SM.model.derive(o);
-    return `<h2>${inp('object.name', o.name, {w: 260})}</h2>` + typesCard() + layerTypesCard() + g.rooms.map((r, ri) => { const d = D[ri];
+    return `<h2>${inp('object.name', o.name, {w: 260})}</h2><p>${dimSel()}</p>` + typesCard() + layerTypesCard() + g.rooms.map((r, ri) => { const d = D[ri];
       return `<div class=card><h3>${inp('object.geometry.rooms.' + ri + '.name', r.name)} высота, м ${inp('object.geometry.rooms.' + ri + '.height', r.height, {n: 1, w: 60})}</h3>
       <div class=kpi><span>Пол <b>${f2(d.floor)} м²</b></span><span>Потолок <b>${f2(d.ceiling)} м²</b></span><span>Стены <b>${f2(d.wallArea)} м²</b></span><span>Периметр <b>${f2(d.perimeter)} м</b></span><span>Откосы <b>${f2(d.reveals)} м²</b></span></div>
+      ${dimsTable(r)}
       ${d.issues.map(i => `<div class=warn>⚠ ${esc(i)}</div>`).join('')}
       <table><tr><th>Стена<th>Длина, м<th>Поворот в конце, °<th>Материал<th>Толщина, м<th></tr>${r.wallIds.map((wid, i) => { const wi = g.walls.findIndex(w => w.id === wid);
         return `<tr><td>${inp('object.geometry.walls.' + wi + '.name', g.walls[wi].name, {w: 80})}<td>${inp('object.geometry.walls.' + wi + '.len', g.walls[wi].len, {n: 1, w: 60})}<td>${inp('object.geometry.walls.' + wi + '.turn', g.walls[wi].turn, {n: 1, w: 50, ph: '90'})}<td>${wallCells(g.walls[wi])}<td>${btn('wall-del', ri + '.' + i, '✕')}</tr>`; }).join('')}</table>
@@ -96,7 +104,7 @@
   function viewEstimate() {
     const o = S.object, R = SM.est.compute(S);
     const rooms = o.geometry.rooms.map(r => [r.id, r.name]), techs = S.techs.map(t => [t.id, t.name]);
-    return `<h2>Работы и смета</h2><div class=card><b>Что делаем:</b> ${techs.length ? `<select id=pt>${techs.map(([k, t]) => `<option value="${k}">${esc(t)}</option>`).join('')}</select> в <select id=pr>${rooms.map(([k, t]) => `<option value="${k}">${esc(t)}</option>`).join('')}</select> <button data-a=plan-add>Добавить в план</button>` : '<i class=hint>Сначала создайте технологию.</i>'}
+    return `<h2>Работы и смета</h2><p>${dimSel()}</p><div class=card><b>Что делаем:</b> ${techs.length ? `<select id=pt>${techs.map(([k, t]) => `<option value="${k}">${esc(t)}</option>`).join('')}</select> в <select id=pr>${rooms.map(([k, t]) => `<option value="${k}">${esc(t)}</option>`).join('')}</select> <button data-a=plan-add>Добавить в план</button>` : '<i class=hint>Сначала создайте технологию.</i>'}
       ${S.plan.map((p, i) => { const t = SM.ver.resolve(S, p); return `<div>• ${esc(t ? t.name : '(удалена)')}${verBadge(p)} — ${esc((rooms.find(r => r[0] === p.roomId) || [0, '?'])[1])} ${R.skipped.includes(p.id) ? '<i class=hint>(процесс уже выполнен или не нужен — в смету не входит; чтобы учесть работу — переведите её в «В работе»)</i>' : ''} ${btn('del', 'plan.' + i, '✕')}</div>`; }).join('')}</div>
       <table><tr><th>Операция<th>Объём<th>Работа, ₽</tr>${R.rows.map(r => `<tr><td>${esc(r.tech.name)} › ${esc(r.op.name)}<td>${r.q === null ? `<span class=warn>? ${r.missing.length ? 'нет: ' + esc(r.missing.join(', ')) : esc(r.error || '')}</span>` : f2(r.q) + ' ' + esc(r.op.unit)}<td class=n>${f2(r.work)}</tr>${(r.applied || []).map(x => `<tr><td colspan=3 class=hint>↳ по правилу: ${esc(x)}</tr>`).join('')}`).join('')}</table>
       <div class=card>Потери на подрезку, % ${inp('fin.waste', S.fin.waste, {n: 1, w: 50})} Запас, % ${inp('fin.reserve', S.fin.reserve, {n: 1, w: 50})}</div>
@@ -323,6 +331,7 @@
         <div>Название ${inp(P + '.name', p.name, {w: 280})} на поверхность ${sel(P + '.surface', p.surface, SURF)} ${btn('lib-del-proc', p.id, 'Удалить процесс')}</div>
         <div><b>Сначала нужно выполнить:</b> ${L.processes.filter(x => x.id !== p.id).map(x => `<label style="white-space:nowrap"><input type=checkbox data-a=lib-after data-p="${p.id}|${x.id}" ${(p.after || []).includes(x.id) ? 'checked' : ''}> ${esc(x.name)}</label>`).join(' ') || '<i class=hint>других процессов нет</i>'}</div>
         ${optCond(P + '.needed', p.needed, 'Нужен, только если (иначе пропускается как «не требуется»):')}${optCond(P + '.requires', p.requires, 'Можно выполнять, только если:')}
+        <div>Результат — слой отделки: <select data-a=set data-p="library.layerMap.${esc(p.id)}"><option value="">— нет —</option>${(S.layerTypes || []).filter(t => !p.surface || t.kinds.includes(p.surface)).map(t => `<option value="${esc(t.id)}" ${(S.library.layerMap || {})[p.id] === t.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select> <span class=hint>когда процесс выполнен, этот слой становится «сделано» (или добавляется)</span></div>
         <div>Вопрос, если неизвестно: ${inp(P + '.ask', p.ask, {w: 320})}</div><div>Причина блокировки: ${inp(P + '.blockedText', p.blockedText, {w: 320})}</div>
         <div><b>Что меняется после выполнения (состояние и геометрия):</b></div>${(p.effects || []).map((e, j) => `<div class=mat>${effEd(`${P}.effects.${j}`, p, e)} ${btn('del', `${P}.effects.${j}`, '✕')}</div>`).join('')}${btn('add', P + '.effects', '＋ эффект', 'data-k=effect')}`) + '</div>'; }).join('');
     const rules = (L.rules || []).map((r, i) => { const P = 'library.rules.' + i, open = libOpen.has('r' + r.id);
@@ -405,7 +414,7 @@
     'room-add'() { const g = S.object.geometry, ws = [0, 1, 2, 3].map(i => ({id: uid(), name: 'Стена ' + (i + 1), len: 3, turn: 90, material: ''})); g.walls.push(...ws); g.rooms.push({id: uid(), name: 'Помещение ' + (g.rooms.length + 1), height: 2.7, wallIds: ws.map(w => w.id)}); },
     legacy() { let raw = null; try { raw = localStorage.getItem('stroysmeta:v3'); } catch (e) {} if (!raw) { alert('Старые данные в этом браузере не найдены (открывайте new.html с того же адреса, что и старое приложение).'); return; }
       const r = SM.legacy.convert(JSON.parse(raw), S); S.materials.push(...r.materials); S.techs.push(...r.techs); alert('Перенесено: технологий ' + r.techs.length + ', материалов ' + r.materials.length + '. Старое приложение не изменено.'); },
-    complete(p) { const [rid, pid] = p.split('|'); try { SM.rules.complete(S.object, S.library, rid, pid); } catch (e) { alert(e.message); } },
+    complete(p) { const [rid, pid] = p.split('|'); try { SM.finish.completeProcess(S, rid, pid); } catch (e) { alert(e.message); } },
     'plan-tech'(p) { const [rid, pid] = p.split('|'), el = document.querySelector(`[data-tp="${p}"]`); if (!el) return;
       if (!S.plan.some(x => x.roomId === rid && x.processId === pid && x.techId === el.value)) { const it = {id: uid(), techId: el.value, roomId: rid, processId: pid, values: {}}; S.plan.push(it); SM.ver.pin(S, it); } },
     'w-start'(id) { try { SM.exec.start(S, S.plan.find(x => x.id === id)); } catch (e) { alert(e.message); } },
@@ -498,6 +507,7 @@
   document.addEventListener('change', e => { const t = e.target; if (t.dataset.a !== 'set') return; const k = t.dataset.p.split('.'), key = k.pop(), o = get(k.join('.') || '');
     let v = t.value.trim(); if (t.dataset.v) v = LX.parseValue(v, t.dataset.v === 'list'); else if (t.dataset.n) { v = v === '' ? null : parseFloat(v.replace(',', '.')); if (v !== null && !isFinite(v)) v = null; }
     if (k.length === 1 && k[0] === 'bought' || k[0] === 'bought') S.bought[key] = v; else if (key === 'thickness' && k.slice(0, 3).join('.') === 'object.geometry.walls') { try { SM.walls.setThickness(S, o.id, v); } catch (err) { alert(err.message); } } else o[key] = v; save(); local(); });
+  document.addEventListener('change', e => { const t = e.target; if (t.dataset.a !== 'dim-mode') return; S.dimMode = t.value; save(); render(); });
   document.addEventListener('change', e => { const t = e.target; if (t.dataset.a !== 'wall-mat') return; try { SM.walls.setMaterial(S, t.dataset.p, t.value); } catch (err) { alert(err.message); } save(); local(); });
   document.addEventListener('change', e => { const t = e.target, a = t.dataset.a; if (!a || !/^(layer-(add|status|type|th|note)|ltype-(th|kind))$/.test(a)) return; const [sid, lid] = (t.dataset.p || '').split('|'), L = SM.layers;
     try { if (a === 'layer-add') { if (t.value) L.add(S, sid, t.value); } else if (a === 'layer-status') L.update(S, sid, lid, {status: t.value}); else if (a === 'layer-type') L.update(S, sid, lid, {type: t.value});

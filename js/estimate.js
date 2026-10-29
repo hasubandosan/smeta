@@ -7,7 +7,7 @@
   const E = SM.est = {};
   // scopeIds — поверхности, на которые направлен процесс (из плана правил); null = всё помещение
   E.vars = (S, item, tech, scopeIds, mods) => {
-    const o = S.object, room = o.geometry.rooms.find(r => r.id === item.roomId), V = {};
+    const o = (SM.finish ? SM.finish.view(S) : S).object, room = o.geometry.rooms.find(r => r.id === item.roomId), V = {};     // размеры по режиму S.dimMode (D46)
     if (room) { const d = SM.geo.deriveRoom(o.geometry, room); Object.assign(V, {floor: d.floor, ceiling: d.ceiling, perimeter: d.perimeter, walls: d.wallArea, reveals: d.reveals, height: room.height});
       V.box = o.surfaces.filter(s => s.kind === 'box' && s.roomId === room.id).reduce((a, s) => a + 2 * (s.w + s.l) * s.h, 0) || null; }
     // Работа на части стен: площадь только выбранных стен (net из геометрии). Проём без привязки к стене = неизвестно, на какую стену он приходится → площадь неизвестна, не угадывается.

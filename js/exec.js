@@ -20,7 +20,7 @@
   X.start = (S, item) => { const v = X.view(S, item); if (v.status !== 'PLANNED') throw new Error('Работа уже не в статусе «Запланировано»');
     if (v.waits.length) throw new Error('Нельзя начать: ' + v.waits.join('; ')); item.status = 'IN_PROGRESS'; return item; };
   X.complete = (S, item) => { if ((item.status || 'PLANNED') !== 'IN_PROGRESS') throw new Error('Завершить можно только работу «В работе»');
-    const ps = procStatus(S, item); if (ps && ps.status === 'READY') SM.rules.complete(S.object, S.library, item.roomId, item.processId);
+    const ps = procStatus(S, item); if (ps && ps.status === 'READY') (SM.finish ? SM.finish.completeProcess(S, item.roomId, item.processId) : SM.rules.complete(S.object, S.library, item.roomId, item.processId));
     else if (ps && ps.status !== 'DONE') throw new Error('Нельзя завершить: ' + (ps.reasons.join('; ') || 'процесс не готов'));
     item.status = 'COMPLETED'; return item; };
   X.check = (item, noteId, val) => { item.checks = item.checks || {}; if (val) item.checks[noteId] = true; else delete item.checks[noteId]; return item; };

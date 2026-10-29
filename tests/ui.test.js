@@ -3,7 +3,7 @@
 const {JSDOM}=require('jsdom'),fs=require('fs'),R=require('path').join(__dirname,'..')+'/';
 let html=fs.readFileSync(R+'index.html','utf8').replace(/<script src="[^"]+"><\/script>/g,'');
 const w=new JSDOM(html,{runScripts:'outside-only',url:'http://localhost/'}).window;w.alert=m=>{throw new Error(m)};
-for(const f of ['core','geometry','model','seeds','planner','planner-ui','layers','walls','geolink','rules','ver','estimate','pauses','routes','exec','fact','storage','kb','norms','legacy','libedit','ui'])w.eval(fs.readFileSync(R+'js/'+f+'.js','utf8'));
+for(const f of ['core','geometry','model','seeds','planner','planner-ui','layers','finish','walls','geolink','rules','ver','estimate','pauses','routes','exec','fact','storage','kb','norms','legacy','libedit','ui'])w.eval(fs.readFileSync(R+'js/'+f+'.js','utf8'));
 const $=s=>w.document.querySelector(s),C=s=>$(s).click(),chg=(s,v)=>{const e=$(s);e.value=v;e.dispatchEvent(new w.Event('change',{bubbles:true}))};
 const tab=t=>C(`[data-a=tab][data-p=${t}]`);let ok=1;const A=(c,m)=>{console.log((c?'OK   ':'FAIL ')+m);if(!c)ok=0};
 A($('#main').textContent.includes('15,75'),'объект: пол 15,75');
@@ -115,4 +115,8 @@ $(`[data-a=ltype-kind][data-p="plaster|floor"]`).checked=true;$(`[data-a=ltype-k
 tab('plan');const hp=w.SM.app.plan(),wid=surf().wallId;w.SM.app.side([wid]);A($('#planside').textContent.includes('Слои отделки этой стороны'),'план: боковая панель показывает слои выбранной стены');
 chg(`[data-a=layer-add][data-p="${sid}"]`,'putty');A(surf().layers.length===3&&w.SM.app.plan()===hp,'план: слой добавлен из панели, планировщик не пересоздан');
 C(`[data-a=layer-del][data-p="${sid}|${surf().layers[2].id}"]`);A(surf().layers.length===2&&w.SM.app.plan()===hp,'план: слой удалён из панели');}
+{const M=()=>JSON.parse(w.localStorage.getItem('stroysmeta:model'));tab('object');A($('#main').textContent.includes('Размеры с учётом слоёв'),'размеры: таблица «как введено / сейчас / финиш» при наличии слоёв');
+A($('#main').textContent.includes('Финиш')&&$('[data-a=dim-mode]')!==null,'размеры: переключатель режима есть');
+chg('[data-a=dim-mode]','finish');A(M().dimMode==='finish','размеры: режим «Финиш» сохранён');tab('estimate');A($('[data-a=dim-mode]')&&$('[data-a=dim-mode]').value==='finish','размеры: режим виден и в смете');chg('[data-a=dim-mode]','rough');A(M().dimMode==='rough','размеры: режим возвращается');
+tab('lib');A($('#main').textContent.includes('Результат — слой отделки'),'библиотека: у процесса выбирается слой-результат');}
 process.exit(ok?0:1)})();

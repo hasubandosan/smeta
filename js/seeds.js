@@ -6,7 +6,7 @@
     // Обновление сохранённой библиотеки без потерь: только ДОБАВЛЯЕТ недостающее по id, ничего не меняет и не удаляет.
     upgradeLibrary(lib) { const base = SM.seeds.library(); if (!lib) return base; if ((lib.version || 0) >= base.version) return lib;
       const L = JSON.parse(JSON.stringify(lib)); for (const k of ['processes', 'rules']) { L[k] = L[k] || []; for (const x of base[k]) if (!L[k].some(y => y.id === x.id)) L[k].push(x); }
-      for (const k of ['layers', 'goalNames', 'goals']) { L[k] = L[k] || {}; for (const key in base[k]) if (!(key in L[k])) L[k][key] = base[k][key]; }
+      for (const k of ['layers', 'goalNames', 'goals', 'layerMap']) { L[k] = L[k] || {}; for (const key in base[k]) if (!(key in L[k])) L[k][key] = base[k][key]; }
       for (const kind in base.layers) for (const lay of base.layers[kind]) if (!L.layers[kind].some(x => x[0] === lay[0])) L.layers[kind].push(lay);   // новые слои внутри вида поверхности
       // Точечные правки демо-процессов (порядок работ): применяются, только если значение ещё демонстрационное (не правилось руками); иначе пропускаются и записываются в upgradeSkipped.
       L.upgradeSkipped = L.upgradeSkipped || [];
@@ -26,7 +26,9 @@
     library() {
       const st = (kind, layer, is, quant) => ({state: {kind, layer, is, quant}}), E = (op, layer) => ({op, layer});
       const P = (id, name, surface, o) => Object.assign({id, name, surface, effects: []}, o);
-      return {version: 4, demo: true,
+      return {version: 5, demo: true,
+        // v5 (D46): какой слой отделки появляется, когда процесс выполнен (тип слоя из S.layerTypes); пусто — процесс слой не создаёт. Ориентир, правится в «Библиотеке».
+        layerMap: {waterproof_floor: 'waterproof', screed_new: 'screed', tile_floor_lay: 'floor_tile', tile_wall: 'wall_tile', paint_wall_zone: 'paint', gkl_ceiling: 'gkl', paint_ceiling: 'paint', paint_box: 'paint'},
         layers: {floor: [['existing_floor', 'Старый пол'], ['slab_waterproofing', 'Гидроизоляция плиты (под стяжку)'], ['waterproofing', 'Гидроизоляция (по стяжке)'], ['heating', 'Тёплый пол'], ['screed', 'Стяжка'], ['tile', 'Плитка']],
           wall: [['existing_tile', 'Старая плитка'], ['base_prepared', 'Основание подготовлено'], ['tile', 'Плитка'], ['painted', 'Окрашено']],
           ceiling: [['gkl', 'ГКЛ'], ['prepared', 'Подготовлено под краску'], ['painted', 'Окрашено']], box: [['base_prepared', 'Основание подготовлено'], ['painted', 'Окрашено']],
